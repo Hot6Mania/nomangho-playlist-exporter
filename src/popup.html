@@ -1,0 +1,81 @@
+﻿<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SyncTube 유튜브 재생목록 생성기</title>
+    <link rel="stylesheet" href="./popup.css" />
+</head>
+<body>
+    <div class="popup-shell">
+        <header class="popup-header">
+            <h1>SyncTube 유튜브 재생목록 생성기</h1>
+            <p class="subtitle">현재 방에서 감지한 YouTube 영상들을 플레이리스트로 만들거나 CSV로 저장하세요.</p>
+        </header>
+        <section id="message" class="message hidden"></section>
+
+        <section class="panel">
+            <div class="field-group room-select-hidden">
+                <label for="roomSelect">방 선택</label>
+                <select id="roomSelect" disabled></select>
+            </div>
+            <div class="field-group">
+                <label for="playlistName">새 YouTube 플레이리스트 이름</label>
+                <input id="playlistName" placeholder="새 플레이리스트 이름" />
+            </div>
+            <div class="field-group">
+                <label for="playlistIdInput">기존 플레이리스트 ID 또는 URL</label>
+                <input id="playlistIdInput" placeholder="PL... 또는 https://www.youtube.com/playlist?..." />
+            </div>
+            <div class="actions-row">
+                <button id="btnClear" class="ghost">리스트 비우기</button>
+                <button id="btnCsv" class="ghost">CSV 내보내기</button>
+            </div>
+            <div class="actions-row">
+                <button id="btnCreate" class="primary">플레이리스트 생성</button>
+                <button id="btnAddAll" class="accent">기존 리스트에 전부 추가</button>
+                <button id="btnCreateFill" class="combo">생성 후 곧바로 추가</button>
+            </div>
+            <a id="playlistLink" class="playlist-link hidden" target="_blank" rel="noopener">YouTube에서 플레이리스트 열기</a>
+        </section>
+
+        <section class="panel toggle-row">
+            <label class="toggle">
+                <input type="checkbox" id="enableYouTubeApi" />
+                <span>Google 계정으로 API 사용 (OAuth 로그인 유지)</span>
+            </label>
+        </section>
+
+        <section class="panel">
+            <h2>수집된 영상</h2>
+            <div class="table-wrapper">
+                <table id="tracks">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th class="ellipsize">제목</th>
+                            <th class="ellipsize">채널</th>
+                            <th>비디오 ID</th>
+                            <th>기록 시각</th>
+                            <th>관리</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="panel" id="manualPanel">
+            <h2>수동으로 곡 추가</h2>
+            <form id="manualForm" class="manual-form">
+                <input id="manualTitle" placeholder="곡 제목 (선택)" />
+                <input id="manualChannel" placeholder="채널명 (선택)" />
+                <input id="manualVideoId" placeholder="YouTube 링크 또는 ID" required />
+                <button type="submit" class="ghost">수동 추가</button>
+            </form>
+        </section>
+    </div>
+    <script type="module" src="./popup.js"></script>
+</body>
+</html>
+

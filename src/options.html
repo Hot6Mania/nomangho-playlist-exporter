@@ -1,0 +1,139 @@
+﻿<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SyncTube 설정</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" />
+    <style>
+        body {
+            font-family: "Pretendard", "Segoe UI", sans-serif;
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            background: radial-gradient(circle at top, rgba(99,102,241,0.25), transparent 55%),
+                        radial-gradient(circle at bottom, rgba(45,212,191,0.25), transparent 60%),
+                        #e2e8f0;
+            color: #1f2937;
+            padding: 32px 16px;
+        }
+
+        .card {
+            width: min(520px, 100%);
+            background: rgba(255, 255, 255, 0.78);
+            border-radius: 20px;
+            padding: 24px 28px;
+            box-shadow: 0 20px 40px rgba(15, 23, 42, 0.18);
+            backdrop-filter: blur(18px);
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.4rem;
+        }
+
+        p {
+            margin: 0;
+            color: #4b5563;
+            font-size: 0.95rem;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            font-size: 0.9rem;
+            color: #475569;
+        }
+
+        input[type="text"] {
+            border-radius: 14px;
+            border: 1px solid rgba(148, 163, 184, 0.6);
+            padding: 10px 14px;
+            font: inherit;
+            background: rgba(255, 255, 255, 0.9);
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+        }
+
+        .toggle {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            font-size: 0.92rem;
+            color: #334155;
+        }
+
+        button {
+            align-self: flex-end;
+            border: none;
+            border-radius: 999px;
+            padding: 11px 20px;
+            font: inherit;
+            cursor: pointer;
+            background: linear-gradient(135deg, #6366f1, #4338ca);
+            color: white;
+            box-shadow: 0 12px 22px rgba(99, 102, 241, 0.35);
+            transition: transform 0.15s ease;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+        }
+
+        .message {
+            border-radius: 12px;
+            padding: 12px 14px;
+            font-size: 0.88rem;
+            border: 1px solid transparent;
+            display: none;
+        }
+
+        .message.show {
+            display: block;
+        }
+
+        .message[data-kind="success"] {
+            background: rgba(34, 197, 94, 0.12);
+            border-color: rgba(34, 197, 94, 0.3);
+            color: #15803d;
+        }
+
+        .message[data-kind="error"] {
+            background: rgba(239, 68, 68, 0.12);
+            border-color: rgba(239, 68, 68, 0.3);
+            color: #b91c1c;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <header>
+            <h1>확장 프로그램 설정</h1>
+            <p>기본 플레이리스트 이름과 API 설정을 변경할 수 있습니다.</p>
+        </header>
+        <section id="optionsMessage" class="message"></section>
+        <div class="field">
+            <label for="defaultPlaylistName">기본 YouTube 플레이리스트 이름</label>
+            <input type="text" id="defaultPlaylistName" placeholder="SyncTube Export" />
+        </div>
+        <label class="toggle">
+            <input type="checkbox" id="enableYouTubeApi" />
+            <span>Google 로그인 기반 YouTube API 사용</span>
+        </label>
+        <button id="save">저장하기</button>
+    </div>
+    <script type="module" src="./options.js"></script>
+</body>
+</html>

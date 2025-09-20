@@ -1,0 +1,53 @@
+﻿{
+  "manifest_version": 3,
+  "name": "SyncTube 유튜브 재생목록 생성기",
+  "version": "1.0.0",
+  "description": "Collects currently playing tracks from a SyncTube-like site and exports them to CSV or a YouTube playlist.",
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  },
+  "action": {
+    "default_title": "SyncTube Exporter",
+    "default_popup": "src/popup.html"
+  },
+  "options_page": "src/options.html",
+  "permissions": [
+    "storage",
+    "identity",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://*/",
+    "http://*/",
+    "https://www.youtube.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "src/content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.youtube.com/embed/*"
+      ],
+      "js": [
+        "src/yt-embed-probe.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "minimum_chrome_version": "114"
+}

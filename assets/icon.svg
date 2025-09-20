@@ -1,0 +1,13 @@
+<svg width="128" height="128" viewBox="0 0 128 128"
+     xmlns="http://www.w3.org/2000/svg"
+     aria-label="Simple Playlist Icon">
+  <g fill="none" stroke="#0EA5E9" stroke-width="10"
+     stroke-linecap="round" stroke-linejoin="round">
+    <!-- 플레이 삼각형 -->
+    <polygon points="20,32 20,96 64,64" />
+    <!-- 재생목록 줄 3개 -->
+    <line x1="80" y1="44" x2="112" y2="44" />
+    <line x1="80" y1="64" x2="112" y2="64" />
+    <line x1="80" y1="84" x2="112" y2="84" />
+  </g>
+</svg>
