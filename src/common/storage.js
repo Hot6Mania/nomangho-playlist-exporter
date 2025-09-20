@@ -101,9 +101,15 @@ export async function addTrack(roomId, track, roomName) {
     const store = await readTrackStore();
     const tracks = store[roomId] ? [...store[roomId]] : [];
     const key = duplicateKey(track);
+    const lastTrack = tracks[tracks.length - 1];
+    const normaliseVideoId = (value) => String(value || "").trim().toLowerCase();
+    const newVideoId = normaliseVideoId(track.videoId);
+    const lastVideoId = normaliseVideoId(lastTrack?.videoId);
+    const sameVideoId = Boolean(lastTrack && newVideoId && lastVideoId && newVideoId === lastVideoId);
+    const isSameAsLast = Boolean(lastTrack && (sameVideoId || (!newVideoId && !lastVideoId && duplicateKey(lastTrack) === key)));
     const existingKeys = new Set(tracks.map(duplicateKey));
     let added = false;
-    if (!existingKeys.has(key)) {
+    if (!isSameAsLast && !existingKeys.has(key)) {
         tracks.push(track);
         store[roomId] = tracks;
         await writeTrackStore(store);
