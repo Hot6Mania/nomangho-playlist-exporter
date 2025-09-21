@@ -125,8 +125,10 @@ function restoreTabStateFromSession() {
     }
 }
 
-await hydrateTabNowPlaying();
-restoreTabStateFromSession();
+(async () => {
+    await hydrateTabNowPlaying();
+    restoreTabStateFromSession();
+})().catch(() => { });
 
 chrome.tabs?.onRemoved?.addListener((tabId) => {
     clearTabNowPlaying(tabId).catch(() => { });
