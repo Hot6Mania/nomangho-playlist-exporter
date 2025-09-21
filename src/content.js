@@ -26,6 +26,7 @@ function getRoomDisplayName() {
 }
 
 let lastVideoKey = null;
+let lastWatchUrl = null;
 let disconnectVideoChange = null;
 let isSendingNowPlaying = false;
 let latestFrameLink = null;
@@ -41,6 +42,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             reason: payload.reason || "iframe",
             ts: payload.ts || Date.now()
         };
+        safeSendNowPlaying();
         sendResponse?.({ ok: true });
         return true;
     }
@@ -200,36 +202,40 @@ async function sendNowPlayingIfChanged() {
     isSendingNowPlaying = true;
     try {
         const now = await readNowPlaying();
-        if (!now || !now.videoId) {
+        const hydratedLink = await hydrateFrameLink();
+        const resolvedVideoId = now?.videoId || hydratedLink?.id || null;
+        let watchUrl = now?.watchUrl || hydratedLink?.href || (resolvedVideoId ? toWatchUrl(resolvedVideoId) : null);
+
+        if (!now && !resolvedVideoId) {
             lastVideoKey = null;
+            lastWatchUrl = null;
             return;
         }
 
-        let watchUrl = now.watchUrl;
-        if (latestFrameLink?.href) {
-            if (!now.videoId || !latestFrameLink.id || latestFrameLink.id === now.videoId) {
-                watchUrl = latestFrameLink.href;
-            }
+        if (!resolvedVideoId) {
+            lastVideoKey = null;
+            lastWatchUrl = null;
+            return;
         }
 
         if (!watchUrl) {
-            const hydrated = await hydrateFrameLink();
-            if (hydrated?.href && (!now.videoId || !hydrated.id || hydrated.id === now.videoId)) {
-                watchUrl = hydrated.href;
-            }
+            watchUrl = toWatchUrl(resolvedVideoId);
         }
 
-        const key = `${now.videoId}|${now.title}|${now.author}`;
-        if (key === lastVideoKey && watchUrl === now.watchUrl) return;
+        const title = now?.title || "";
+        const author = now?.author || "";
+        const key = `${resolvedVideoId}|${title}|${author}`;
+        if (key === lastVideoKey && watchUrl === lastWatchUrl) return;
         lastVideoKey = key;
+        lastWatchUrl = watchUrl;
 
         const roomName = getRoomDisplayName();
         chrome.runtime.sendMessage({
             type: "NOW_PLAYING",
             payload: {
-                title: now.title,
-                channel: now.author,
-                videoId: now.videoId,
+                title,
+                channel: author,
+                videoId: resolvedVideoId,
                 watchUrl,
                 roomId: ROOM_KEY,
                 roomName,
@@ -269,7 +275,9 @@ function reportPlaylistCandidates() {
     });
 }
 
-const safeSendNowPlaying = () => { sendNowPlayingIfChanged().catch(() => { }); };
+function safeSendNowPlaying() {
+    sendNowPlayingIfChanged().catch(() => { });
+}
 const safeReportCandidates = () => { try { reportPlaylistCandidates(); } catch { /* noop */ } };
 
 const infoObserver = new MutationObserver(() => {
