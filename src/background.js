@@ -52,7 +52,7 @@ function extractVideoId(value) {
 }
 
 function toWatchUrl(videoId) {
-    return videoId ? `"https://www.youtube.com/watch?v=${videoId}`" : null;
+    return videoId ? `https://www.youtube.com/watch?v=${videoId}` : null;
 }
 
 chrome.runtime.onInstalled.addListener(async () => {
