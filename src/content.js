@@ -40,6 +40,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         latestFrameLink = {
             href: payload.href || "",
             id: payload.id || "",
+            title: payload.title || "",
+            channel: payload.channel || "",
             reason: payload.reason || "iframe",
             ts: payload.ts || Date.now()
         };
@@ -223,8 +225,8 @@ async function sendNowPlayingIfChanged(forceHydrate = false) {
             watchUrl = toWatchUrl(resolvedVideoId);
         }
 
-        const title = now?.title || "";
-        const author = now?.author || "";
+        const title = now?.title || hydratedLink?.title || "";
+        const author = now?.author || hydratedLink?.channel || "";
         const key = `${resolvedVideoId}|${title}|${author}`;
         if (key === lastVideoKey && watchUrl === lastWatchUrl) return;
         lastVideoKey = key;

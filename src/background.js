@@ -68,6 +68,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     const payload = {
                         href: msg.payload?.href || "",
                         id: msg.payload?.id || "",
+                        title: msg.payload?.title || "",
+                        channel: msg.payload?.channel || "",
                         reason: msg.payload?.reason || "iframe",
                         ts: Date.now()
                     };

@@ -1,6 +1,7 @@
 ﻿(function () {
     const LINK_SELECTOR = 'a.ytp-title-link[href^="https://www.youtube.com/watch"]';
-    let lastHref = null;
+    const CHANNEL_SELECTOR = ".ytp-title-channel-name";
+    let lastSignature = null;
 
     function readLink() {
         const anchor = document.querySelector(LINK_SELECTOR);
@@ -12,14 +13,18 @@
         } catch {
             id = null;
         }
-        return { href, id };
+        const title = anchor.textContent?.trim() || "";
+        const channelText = document.querySelector(CHANNEL_SELECTOR)?.textContent || "";
+        const channel = channelText.replace(/^by\s+/i, "").trim();
+        return { href, id, title, channel };
     }
 
     function publish(reason) {
         const data = readLink();
         if (!data || !data.href) return;
-        if (data.href === lastHref && reason !== "api") return;
-        lastHref = data.href;
+        const signature = `${data.href}|${data.title || ""}|${data.channel || ""}`;
+        if (signature === lastSignature && reason !== "api") return;
+        lastSignature = signature;
         chrome.runtime.sendMessage({
             type: "YTLINK_FROM_IFRAME",
             payload: { ...data, reason }
@@ -55,10 +60,16 @@
                 const id = data?.video_id || null;
                 const href = url || (id ? `https://www.youtube.com/watch?v=${id}` : null);
                 if (href) {
-                    lastHref = href;
+                    lastSignature = `${href}|${data?.title || ""}|${data?.author || ""}`;
                     chrome.runtime.sendMessage({
                         type: "YTLINK_FROM_IFRAME",
-                        payload: { href, id, reason: tag }
+                        payload: {
+                            href,
+                            id,
+                            title: data?.title || "",
+                            channel: data?.author || "",
+                            reason: tag
+                        }
                     });
                 }
             } catch {
