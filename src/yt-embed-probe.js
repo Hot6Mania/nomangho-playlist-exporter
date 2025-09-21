@@ -53,7 +53,7 @@
                 const url = typeof player.getVideoUrl === "function" ? player.getVideoUrl() : null;
                 const data = typeof player.getVideoData === "function" ? player.getVideoData() : null;
                 const id = data?.video_id || null;
-                const href = url || (id ? https://www.youtube.com/watch?v= : null);
+                const href = url || (id ? `https://www.youtube.com/watch?v=${id}` : null);
                 if (href) {
                     lastHref = href;
                     chrome.runtime.sendMessage({

@@ -15,7 +15,7 @@ const ROOM_KEY = (() => {
     if (match && match[1]) return match[1];
     const titleName = getRoomDisplayName();
     if (titleName) return titleName.replace(/\s+/g, "_");
-    return oom-;
+    return `room-${Date.now()}`;
 })();
 
 function getRoomDisplayName() {
@@ -52,7 +52,7 @@ function sleep(ms) {
 }
 
 function toWatchUrl(id) {
-    return https://www.youtube.com/watch?v=;
+    return `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
 }
 
 function extractIdFromAny(urlOrId) {
@@ -88,7 +88,7 @@ async function getCurrentVideoIdViaAPI() {
     if (!iframe) return null;
 
     if (!iframe.id) {
-        iframe.id = syncyt-iframe-;
+        iframe.id = `syncyt-iframe-${Math.random().toString(36).slice(2)}`;
     }
 
     if (cachedApiPlayer && cachedPlayerIframe !== iframe && typeof cachedApiPlayer.destroy === "function") {
@@ -219,7 +219,7 @@ async function sendNowPlayingIfChanged() {
             }
         }
 
-        const key = ${now.videoId}|;
+        const key = `${now.videoId}|${now.title}|${now.author}`;
         if (key === lastVideoKey && watchUrl === now.watchUrl) return;
         lastVideoKey = key;
 
@@ -258,81 +258,89 @@ function scanPlaylistLinks() {
 function reportPlaylistCandidates() {
     const items = scanPlaylistLinks();
     if (!items.length) return;
-    chrome.runtime.sendMessage({ type: "PLAYLIST_CANDIDATES", payload: { items, roomId: ROOM_KEY, roomName: getRoomDisplayName(), ts: Date.now() } });
-}
-
-const safeSendNowPlaying = () => { sendNowPlayingIfChanged().catch(() => {}); };
-const safeReportCandidates = () => { try { reportPlaylistCandidates(); } catch { /* noop */ } };
-
-const infoObserver = new MutationObserver(() => {
-    safeSendNowPlaying();
-    safeReportCandidates();
-});
-
-function initInfoObserver() {
-    const targets = [
-        document.querySelector(SELECTORS.mediaWrapper),
-        document.querySelector(".media-info"),
-        document.querySelector(".youtube-player"),
-        document.querySelector("aside")
-    ].filter(Boolean);
-    targets.forEach(t => infoObserver.observe(t, { childList: true, subtree: true, characterData: true }));
-}
-
-function onVideoChange(callback) {
-    const runCallback = () => { try { callback(); } catch { /* ignore */ } };
-    const iframeObserver = new MutationObserver(() => runCallback());
-    const containerObserver = new MutationObserver(() => {
-        iframeObserver.disconnect();
-        startWatchingIframe();
-        runCallback();
+    chrome.runtime.sendMessage({
+        type: "PLAYLIST_CANDIDATES",
+        payload: {
+            items,
+            roomId: ROOM_KEY,
+            roomName: getRoomDisplayName(),
+            ts: Date.now()
+        }
     });
 
-    function startWatchingIframe() {
-        const iframe = getYTFrame();
-        if (!iframe) return;
-        iframeObserver.observe(iframe, { attributes: true, attributeFilter: ["src"] });
-    }
+    const safeSendNowPlaying = () => { sendNowPlayingIfChanged().catch(() => { }); };
+    const safeReportCandidates = () => { try { reportPlaylistCandidates(); } catch { /* noop */ } };
 
-    const container = document.querySelector(".youtube-player") || document.body;
-    containerObserver.observe(container, { childList: true, subtree: true });
-
-    startWatchingIframe();
-    runCallback();
-
-    return () => {
-        iframeObserver.disconnect();
-        containerObserver.disconnect();
-    };
-}
-
-function initVideoChangeWatcher() {
-    if (disconnectVideoChange) {
-        disconnectVideoChange();
-    }
-    disconnectVideoChange = onVideoChange(() => {
+    const infoObserver = new MutationObserver(() => {
         safeSendNowPlaying();
         safeReportCandidates();
     });
-}
 
-async function hydrateInitialFrameLink() {
-    await hydrateFrameLink(true);
-}
+    function initInfoObserver() {
+        const targets = [
+            document.querySelector(SELECTORS.mediaWrapper),
+            document.querySelector(".media-info"),
+            document.querySelector(".youtube-player"),
+            document.querySelector("aside")
+        ].filter(Boolean);
+        targets.forEach(t => infoObserver.observe(t, { childList: true, subtree: true, characterData: true }));
+    }
 
-async function init() {
-    hydrateInitialFrameLink().catch(() => {});
-    safeSendNowPlaying();
-    safeReportCandidates();
-    initInfoObserver();
-    initVideoChangeWatcher();
-    setInterval(() => {
+    function onVideoChange(callback) {
+        const runCallback = () => { try { callback(); } catch { /* ignore */ } };
+        const iframeObserver = new MutationObserver(() => runCallback());
+        const containerObserver = new MutationObserver(() => {
+            iframeObserver.disconnect();
+            startWatchingIframe();
+            runCallback();
+        });
+
+        function startWatchingIframe() {
+            const iframe = getYTFrame();
+            if (!iframe) return;
+            iframeObserver.observe(iframe, { attributes: true, attributeFilter: ["src"] });
+        }
+
+        const container = document.querySelector(".youtube-player") || document.body;
+        containerObserver.observe(container, { childList: true, subtree: true });
+
+        startWatchingIframe();
+        runCallback();
+
+        return () => {
+            iframeObserver.disconnect();
+            containerObserver.disconnect();
+        };
+    }
+
+    function initVideoChangeWatcher() {
+        if (disconnectVideoChange) {
+            disconnectVideoChange();
+        }
+        disconnectVideoChange = onVideoChange(() => {
+            safeSendNowPlaying();
+            safeReportCandidates();
+        });
+    }
+
+    async function hydrateInitialFrameLink() {
+        await hydrateFrameLink(true);
+    }
+
+    async function init() {
+        hydrateInitialFrameLink().catch(() => { });
         safeSendNowPlaying();
-    }, 1000);
-}
+        safeReportCandidates();
+        initInfoObserver();
+        initVideoChangeWatcher();
+        setInterval(() => {
+            safeSendNowPlaying();
+        }, 1000);
+    }
 
-if (document.readyState === "complete" || document.readyState === "interactive") {
-    init();
-} else {
-    window.addEventListener("DOMContentLoaded", init);
+    if (document.readyState === "complete" || document.readyState === "interactive") {
+        init();
+    } else {
+        window.addEventListener("DOMContentLoaded", init);
+    }
 }
