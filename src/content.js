@@ -267,80 +267,81 @@ function reportPlaylistCandidates() {
             ts: Date.now()
         }
     });
+}
 
-    const safeSendNowPlaying = () => { sendNowPlayingIfChanged().catch(() => { }); };
-    const safeReportCandidates = () => { try { reportPlaylistCandidates(); } catch { /* noop */ } };
+const safeSendNowPlaying = () => { sendNowPlayingIfChanged().catch(() => { }); };
+const safeReportCandidates = () => { try { reportPlaylistCandidates(); } catch { /* noop */ } };
 
-    const infoObserver = new MutationObserver(() => {
+const infoObserver = new MutationObserver(() => {
+    safeSendNowPlaying();
+    safeReportCandidates();
+});
+
+function initInfoObserver() {
+    infoObserver.disconnect();
+    const targets = [
+        document.querySelector(SELECTORS.mediaWrapper),
+        document.querySelector(".media-info"),
+        document.querySelector(".youtube-player"),
+        document.querySelector("aside")
+    ].filter(Boolean);
+    targets.forEach(t => infoObserver.observe(t, { childList: true, subtree: true, characterData: true }));
+}
+
+function onVideoChange(callback) {
+    const runCallback = () => { try { callback(); } catch { /* ignore */ } };
+    const iframeObserver = new MutationObserver(() => runCallback());
+    const containerObserver = new MutationObserver(() => {
+        iframeObserver.disconnect();
+        startWatchingIframe();
+        runCallback();
+    });
+
+    function startWatchingIframe() {
+        const iframe = getYTFrame();
+        if (!iframe) return;
+        iframeObserver.observe(iframe, { attributes: true, attributeFilter: ["src"] });
+    }
+
+    const container = document.querySelector(".youtube-player") || document.body;
+    containerObserver.observe(container, { childList: true, subtree: true });
+
+    startWatchingIframe();
+    runCallback();
+
+    return () => {
+        iframeObserver.disconnect();
+        containerObserver.disconnect();
+    };
+}
+
+function initVideoChangeWatcher() {
+    if (disconnectVideoChange) {
+        disconnectVideoChange();
+    }
+    disconnectVideoChange = onVideoChange(() => {
         safeSendNowPlaying();
         safeReportCandidates();
     });
+}
 
-    function initInfoObserver() {
-        const targets = [
-            document.querySelector(SELECTORS.mediaWrapper),
-            document.querySelector(".media-info"),
-            document.querySelector(".youtube-player"),
-            document.querySelector("aside")
-        ].filter(Boolean);
-        targets.forEach(t => infoObserver.observe(t, { childList: true, subtree: true, characterData: true }));
-    }
+async function hydrateInitialFrameLink() {
+    await hydrateFrameLink(true);
+}
 
-    function onVideoChange(callback) {
-        const runCallback = () => { try { callback(); } catch { /* ignore */ } };
-        const iframeObserver = new MutationObserver(() => runCallback());
-        const containerObserver = new MutationObserver(() => {
-            iframeObserver.disconnect();
-            startWatchingIframe();
-            runCallback();
-        });
-
-        function startWatchingIframe() {
-            const iframe = getYTFrame();
-            if (!iframe) return;
-            iframeObserver.observe(iframe, { attributes: true, attributeFilter: ["src"] });
-        }
-
-        const container = document.querySelector(".youtube-player") || document.body;
-        containerObserver.observe(container, { childList: true, subtree: true });
-
-        startWatchingIframe();
-        runCallback();
-
-        return () => {
-            iframeObserver.disconnect();
-            containerObserver.disconnect();
-        };
-    }
-
-    function initVideoChangeWatcher() {
-        if (disconnectVideoChange) {
-            disconnectVideoChange();
-        }
-        disconnectVideoChange = onVideoChange(() => {
-            safeSendNowPlaying();
-            safeReportCandidates();
-        });
-    }
-
-    async function hydrateInitialFrameLink() {
-        await hydrateFrameLink(true);
-    }
-
-    async function init() {
-        hydrateInitialFrameLink().catch(() => { });
+async function init() {
+    hydrateInitialFrameLink().catch(() => { });
+    safeSendNowPlaying();
+    safeReportCandidates();
+    initInfoObserver();
+    initVideoChangeWatcher();
+    setInterval(() => {
         safeSendNowPlaying();
-        safeReportCandidates();
-        initInfoObserver();
-        initVideoChangeWatcher();
-        setInterval(() => {
-            safeSendNowPlaying();
-        }, 1000);
-    }
+    }, 1000);
+}
 
-    if (document.readyState === "complete" || document.readyState === "interactive") {
-        init();
-    } else {
-        window.addEventListener("DOMContentLoaded", init);
-    }
+if (document.readyState === "complete" || document.readyState === "interactive") {
+    init();
+} else {
+    window.addEventListener("DOMContentLoaded", init);
 }
