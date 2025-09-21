@@ -34,6 +34,21 @@ let lastFrameHydrateTs = 0;
 const FRAME_HYDRATE_INTERVAL_MS = 1500;
 const FORCE_FRAME_POLL_INTERVAL_MS = 2000;
 
+chrome.runtime.onMessage.addListener((msg) => {
+    if (msg?.type === "YT_NOW_PLAYING_BROADCAST" && msg.payload) {
+        latestFrameLink = {
+            href: msg.payload?.href || "",
+            id: msg.payload?.videoId || msg.payload?.id || "",
+            videoId: msg.payload?.videoId || msg.payload?.id || "",
+            title: msg.payload?.title || "",
+            channel: msg.payload?.channel || "",
+            frameUrl: msg.payload?.frameUrl || "",
+            updatedAt: msg.payload?.updatedAt || Date.now()
+        };
+        lastFrameHydrateTs = Date.now();
+    }
+});
+
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }

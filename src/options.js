@@ -17,7 +17,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     try {
         const settings = await getSettings();
         document.querySelector("#defaultPlaylistName").value = settings.defaultPlaylistName || "SyncTube Export";
-        document.querySelector("#enableYouTubeApi").checked = !!settings.enableYouTubeApi;
+        const keepLinked = typeof settings.keepYouTubeLinked === "boolean"
+            ? settings.keepYouTubeLinked
+            : !!settings.enableYouTubeApi;
+        document.querySelector("#keepYouTubeLinked").checked = keepLinked;
     } catch (err) {
         showMessage("error", `설정을 불러오지 못했습니다: ${err?.message || err}`);
     }
@@ -25,8 +28,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     document.querySelector("#save").addEventListener("click", async () => {
         try {
             const name = document.querySelector("#defaultPlaylistName").value.trim() || "SyncTube Export";
-            const enable = document.querySelector("#enableYouTubeApi").checked;
-            await setSettings({ defaultPlaylistName: name, enableYouTubeApi: enable });
+            const keepLinked = document.querySelector("#keepYouTubeLinked").checked;
+            await setSettings({ defaultPlaylistName: name, keepYouTubeLinked: keepLinked });
             showMessage("success", "저장되었습니다.");
         } catch (err) {
             showMessage("error", `저장 중 문제가 발생했습니다: ${err?.message || err}`);

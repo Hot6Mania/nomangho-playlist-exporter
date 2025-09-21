@@ -18,9 +18,50 @@ import { createPlaylist, addVideoToPlaylist } from "./common/youtube.js";
 
 let activeRoomIdCache = null;
 const ytNowPlayingByTab = new Map();
+const persistedTabNowPlaying = {};
+const TAB_NOW_PLAYING_STORAGE_KEY = "ytNowPlayingByTab";
 
-function updateTabNowPlaying(tabId, data) {
+async function persistNowPlayingStore() {
+    try {
+        await chrome.storage.local.set({ [TAB_NOW_PLAYING_STORAGE_KEY]: { ...persistedTabNowPlaying } });
+    } catch {
+        // ignore persistence errors
+    }
+}
+
+async function hydrateTabNowPlaying() {
+    try {
+        const stored = await chrome.storage.local.get(TAB_NOW_PLAYING_STORAGE_KEY);
+        const raw = stored?.[TAB_NOW_PLAYING_STORAGE_KEY];
+        if (raw && typeof raw === "object") {
+            Object.entries(raw).forEach(([key, value]) => {
+                if (!value) return;
+                const tabId = Number(key);
+                if (!Number.isInteger(tabId)) return;
+                persistedTabNowPlaying[String(tabId)] = value;
+                ytNowPlayingByTab.set(tabId, value);
+            });
+        }
+    } catch {
+        // ignore hydration failures
+    }
+}
+
+function getTabNowPlaying(tabId) {
+    if (ytNowPlayingByTab.has(tabId)) {
+        return ytNowPlayingByTab.get(tabId) || null;
+    }
+    const fallback = persistedTabNowPlaying[String(tabId)];
+    if (fallback) {
+        ytNowPlayingByTab.set(tabId, fallback);
+        return fallback;
+    }
+    return null;
+}
+
+async function updateTabNowPlaying(tabId, data) {
     ytNowPlayingByTab.set(tabId, data);
+    persistedTabNowPlaying[String(tabId)] = data;
     if (chrome?.storage?.session?.set) {
         try {
             chrome.storage.session.set({ [`tab-${tabId}`]: data });
@@ -28,14 +69,23 @@ function updateTabNowPlaying(tabId, data) {
             // ignore storage errors
         }
     }
+    await persistNowPlayingStore();
+    if (chrome?.tabs?.sendMessage) {
+        try {
+            chrome.tabs.sendMessage(tabId, { type: "YT_NOW_PLAYING_BROADCAST", payload: data }, () => {
+                // ignore missing receiver errors
+                const _ = chrome.runtime?.lastError;
+                void _;
+            });
+        } catch {
+            // ignore delivery errors
+        }
+    }
 }
 
-function getTabNowPlaying(tabId) {
-    return ytNowPlayingByTab.get(tabId) || null;
-}
-
-function clearTabNowPlaying(tabId) {
+async function clearTabNowPlaying(tabId) {
     ytNowPlayingByTab.delete(tabId);
+    delete persistedTabNowPlaying[String(tabId)];
     if (chrome?.storage?.session?.remove) {
         try {
             chrome.storage.session.remove(`tab-${tabId}`);
@@ -43,6 +93,7 @@ function clearTabNowPlaying(tabId) {
             // ignore storage errors
         }
     }
+    await persistNowPlayingStore();
 }
 
 function restoreTabStateFromSession() {
@@ -54,24 +105,31 @@ function restoreTabStateFromSession() {
             if (chrome.runtime?.lastError) {
                 return;
             }
+            let changed = false;
             Object.entries(items || {}).forEach(([key, value]) => {
                 if (key.startsWith("tab-")) {
                     const tabId = Number(key.slice(4));
                     if (Number.isInteger(tabId) && value) {
                         ytNowPlayingByTab.set(tabId, value);
+                        persistedTabNowPlaying[String(tabId)] = value;
+                        changed = true;
                     }
                 }
             });
+            if (changed) {
+                persistNowPlayingStore().catch(() => { });
+            }
         });
     } catch {
         // ignore session restore errors
     }
 }
 
+await hydrateTabNowPlaying();
 restoreTabStateFromSession();
 
 chrome.tabs?.onRemoved?.addListener((tabId) => {
-    clearTabNowPlaying(tabId);
+    clearTabNowPlaying(tabId).catch(() => { });
 });
 
 async function ensureActiveRoomId() {
@@ -106,8 +164,15 @@ function toWatchUrl(videoId) {
     return videoId ? `https://www.youtube.com/watch?v=${videoId}` : null;
 }
 
-chrome.runtime.onInstalled.addListener(async () => {
-    await setSettings({ defaultPlaylistName: "SyncTube Export", enableYouTubeApi: false });
+chrome.runtime.onInstalled.addListener(async (details) => {
+    if (details?.reason === "install") {
+        await setSettings({ defaultPlaylistName: "SyncTube Export", keepYouTubeLinked: false });
+        return;
+    }
+    if (details?.reason === "update") {
+        const current = await getSettings();
+        await setSettings({ keepYouTubeLinked: current.keepYouTubeLinked });
+    }
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -120,10 +185,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     href: msg.payload?.href || "",
                     title: msg.payload?.title || "",
                     videoId: msg.payload?.videoId || "",
+                    channel: msg.payload?.channel || "",
+                    frameUrl: msg.payload?.frameUrl || "",
                     updatedAt: Date.now(),
                     frameId
                 };
-                updateTabNowPlaying(tabId, payload);
+                await updateTabNowPlaying(tabId, payload);
                 sendResponse?.({ ok: true });
                 return;
             }

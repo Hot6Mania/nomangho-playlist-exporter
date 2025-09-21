@@ -185,12 +185,30 @@ export async function clearTracks(roomId) {
 
 export async function getSettings() {
     const { [STORAGE_KEYS.SETTINGS]: settings } = await chrome.storage.local.get(STORAGE_KEYS.SETTINGS);
-    return Object.assign({ defaultPlaylistName: "SyncTube Export", enableYouTubeApi: false }, settings || {});
+    const base = { defaultPlaylistName: "SyncTube Export", keepYouTubeLinked: false };
+    const raw = settings && typeof settings === "object" ? settings : {};
+    const next = { ...base, ...raw };
+    if (typeof next.keepYouTubeLinked !== "boolean" && typeof next.enableYouTubeApi === "boolean") {
+        next.keepYouTubeLinked = next.enableYouTubeApi;
+    }
+    if (typeof next.enableYouTubeApi !== "boolean") {
+        next.enableYouTubeApi = next.keepYouTubeLinked;
+    }
+    return next;
 }
 
 export async function setSettings(partial) {
     const current = await getSettings();
     const next = { ...current, ...partial };
+    if (typeof partial.keepYouTubeLinked === "boolean") {
+        next.keepYouTubeLinked = partial.keepYouTubeLinked;
+        next.enableYouTubeApi = partial.keepYouTubeLinked;
+    } else if (typeof partial.enableYouTubeApi === "boolean") {
+        next.enableYouTubeApi = partial.enableYouTubeApi;
+        if (typeof partial.keepYouTubeLinked !== "boolean") {
+            next.keepYouTubeLinked = partial.enableYouTubeApi;
+        }
+    }
     await chrome.storage.local.set({ [STORAGE_KEYS.SETTINGS]: next });
     return next;
 }

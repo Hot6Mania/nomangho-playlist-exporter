@@ -305,13 +305,16 @@ async function loadSettings() {
     const r = await send("GET_SETTINGS");
     if (!r?.ok) return;
     qs("#playlistName").value = r.settings?.defaultPlaylistName || "";
-    qs("#enableYouTubeApi").checked = !!r.settings?.enableYouTubeApi;
+    const keepLinked = typeof r.settings?.keepYouTubeLinked === "boolean"
+        ? r.settings.keepYouTubeLinked
+        : !!r.settings?.enableYouTubeApi;
+    qs("#keepYouTubeLinked").checked = keepLinked;
 }
 
 async function saveSettings() {
     const name = qs("#playlistName").value.trim();
-    const enableYouTubeApi = qs("#enableYouTubeApi").checked;
-    await send("SET_SETTINGS", { defaultPlaylistName: name || "SyncTube Export", enableYouTubeApi });
+    const keepYouTubeLinked = qs("#keepYouTubeLinked").checked;
+    await send("SET_SETTINGS", { defaultPlaylistName: name || "SyncTube Export", keepYouTubeLinked });
 }
 
 async function createPlaylistAndRemember() {
@@ -411,7 +414,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     qs("#btnAddAll").addEventListener("click", onAddAllToPlaylist);
     qs("#manualForm").addEventListener("submit", addTrackManually);
     qs("#tracks").addEventListener("click", handleTableClick);
-    qs("#enableYouTubeApi").addEventListener("change", saveSettings);
+    qs("#keepYouTubeLinked").addEventListener("change", saveSettings);
     qs("#playlistName").addEventListener("change", saveSettings);
 
     setInterval(refreshTracks, 2000);

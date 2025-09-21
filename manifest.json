@@ -23,18 +23,22 @@
     "https://*/",
     "http://*/",
     "https://www.youtube.com/*",
-    "*://*.youtube.com/*"
+    "*://*.youtube.com/*",
+    "https://*.youtube-nocookie.com/*",
+    "https://www.googleapis.com/*"
   ],
   "content_scripts": [
     {
       "matches": [
-        "*://*.youtube.com/*"
+        "*://*.youtube.com/*",
+        "https://*.youtube-nocookie.com/*"
       ],
       "js": [
         "src/youtube.js"
       ],
       "run_at": "document_idle",
-      "all_frames": true
+      "all_frames": true,
+      "match_about_blank": true
     },
     {
       "matches": [
@@ -49,6 +53,13 @@
   "background": {
     "service_worker": "src/background.js",
     "type": "module"
+  },
+  "oauth2": {
+    "client_id": "167372131380-ononri3opot09qdgl3s47hiq62u0dg6q.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/youtube",
+      "https://www.googleapis.com/auth/youtube.force-ssl"
+    ]
   },
   "minimum_chrome_version": "114"
 }
