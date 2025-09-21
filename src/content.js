@@ -32,6 +32,7 @@ let isSendingNowPlaying = false;
 let latestFrameLink = null;
 let lastFrameHydrateTs = 0;
 const FRAME_HYDRATE_INTERVAL_MS = 1500;
+const FORCE_FRAME_POLL_INTERVAL_MS = 2000;
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg?.type === "YTLINK_UPDATE") {
@@ -197,12 +198,12 @@ async function hydrateFrameLink(force = false) {
     });
 }
 
-async function sendNowPlayingIfChanged() {
+async function sendNowPlayingIfChanged(forceHydrate = false) {
     if (isSendingNowPlaying) return;
     isSendingNowPlaying = true;
     try {
         const now = await readNowPlaying();
-        const hydratedLink = await hydrateFrameLink();
+        const hydratedLink = await hydrateFrameLink(forceHydrate);
         const resolvedVideoId = now?.videoId || hydratedLink?.id || null;
         let watchUrl = now?.watchUrl || hydratedLink?.href || (resolvedVideoId ? toWatchUrl(resolvedVideoId) : null);
 
@@ -275,8 +276,8 @@ function reportPlaylistCandidates() {
     });
 }
 
-function safeSendNowPlaying() {
-    sendNowPlayingIfChanged().catch(() => { });
+function safeSendNowPlaying(forceHydrate = false) {
+    sendNowPlayingIfChanged(forceHydrate).catch(() => { });
 }
 const safeReportCandidates = () => { try { reportPlaylistCandidates(); } catch { /* noop */ } };
 
@@ -346,6 +347,9 @@ async function init() {
     setInterval(() => {
         safeSendNowPlaying();
     }, 1000);
+    setInterval(() => {
+        safeSendNowPlaying(true);
+    }, FORCE_FRAME_POLL_INTERVAL_MS);
 }
 
 if (document.readyState === "complete" || document.readyState === "interactive") {
