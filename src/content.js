@@ -34,24 +34,6 @@ let lastFrameHydrateTs = 0;
 const FRAME_HYDRATE_INTERVAL_MS = 1500;
 const FORCE_FRAME_POLL_INTERVAL_MS = 2000;
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg?.type === "YTLINK_UPDATE") {
-        const payload = msg.payload || {};
-        latestFrameLink = {
-            href: payload.href || "",
-            id: payload.id || "",
-            title: payload.title || "",
-            channel: payload.channel || "",
-            reason: payload.reason || "iframe",
-            ts: payload.ts || Date.now()
-        };
-        safeSendNowPlaying();
-        sendResponse?.({ ok: true });
-        return true;
-    }
-    return false;
-});
-
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -191,12 +173,27 @@ async function hydrateFrameLink(force = false) {
     }
     lastFrameHydrateTs = now;
     return new Promise((resolve) => {
-        chrome.runtime.sendMessage({ type: "GET_YTLINK" }, (res) => {
-            if (res?.current) {
-                latestFrameLink = res.current;
-            }
+        try {
+            chrome.runtime.sendMessage({ type: "get-now-playing" }, (res) => {
+                const err = chrome.runtime?.lastError || null;
+                if (!err) {
+                    const data = res?.current ? res.current : res;
+                    if (data) {
+                        latestFrameLink = {
+                            href: data.href || "",
+                            id: data.id || data.videoId || "",
+                            videoId: data.videoId || data.id || "",
+                            title: data.title || "",
+                            channel: data.channel || "",
+                            updatedAt: data.updatedAt || data.ts || Date.now()
+                        };
+                    }
+                }
+                resolve(latestFrameLink);
+            });
+        } catch {
             resolve(latestFrameLink);
-        });
+        }
     });
 }
 
@@ -206,7 +203,8 @@ async function sendNowPlayingIfChanged(forceHydrate = false) {
     try {
         const now = await readNowPlaying();
         const hydratedLink = await hydrateFrameLink(forceHydrate);
-        const resolvedVideoId = now?.videoId || hydratedLink?.id || null;
+        const fallbackVideoId = hydratedLink?.videoId || hydratedLink?.id || null;
+        const resolvedVideoId = now?.videoId || fallbackVideoId || null;
         let watchUrl = now?.watchUrl || hydratedLink?.href || (resolvedVideoId ? toWatchUrl(resolvedVideoId) : null);
 
         if (!now && !resolvedVideoId) {

@@ -17,55 +17,62 @@ import {
 import { createPlaylist, addVideoToPlaylist } from "./common/youtube.js";
 
 let activeRoomIdCache = null;
-const ytLinkByTab = new Map();
-const YT_LINK_POLL_INTERVAL_MS = 1000;
+const ytNowPlayingByTab = new Map();
 
-function normaliseString(value) {
-    return typeof value === "string" ? value : "";
-}
-
-function mergeYtPayload(existingEntry, incomingPayload) {
-    const currentPayload = existingEntry?.payload || {};
-    const nextPayload = {
-        href: normaliseString(incomingPayload?.href) || normaliseString(currentPayload.href),
-        id: normaliseString(incomingPayload?.id) || normaliseString(currentPayload.id),
-        title: normaliseString(incomingPayload?.title) || normaliseString(currentPayload.title),
-        channel: normaliseString(incomingPayload?.channel) || normaliseString(currentPayload.channel),
-        reason: normaliseString(incomingPayload?.reason) || normaliseString(currentPayload.reason),
-        ts: Date.now()
-    };
-    return nextPayload;
-}
-
-async function pollYtFrameLinks() {
-    if (!ytLinkByTab.size) {
-        return;
-    }
-    if (typeof chrome === "undefined" || !(chrome.tabs?.sendMessage)) {
-        return;
-    }
-    for (const [tabId, entry] of ytLinkByTab.entries()) {
-        if (!entry || typeof entry.frameId !== "number") continue;
+function updateTabNowPlaying(tabId, data) {
+    ytNowPlayingByTab.set(tabId, data);
+    if (chrome?.storage?.session?.set) {
         try {
-            await chrome.tabs.sendMessage(tabId, { type: "YTLINK_FORCE_PUBLISH" }, { frameId: entry.frameId });
-        } catch (err) {
-            const message = err?.message || "";
-            if (message.includes("No tab with id") || message.includes("Receiving end does not exist")) {
-                ytLinkByTab.delete(tabId);
-            }
+            chrome.storage.session.set({ [`tab-${tabId}`]: data });
+        } catch {
+            // ignore storage errors
         }
     }
 }
 
-chrome.tabs?.onRemoved?.addListener((tabId) => {
-    ytLinkByTab.delete(tabId);
-});
-
-if (typeof setInterval === "function") {
-    setInterval(() => {
-        pollYtFrameLinks().catch(() => { /* ignore polling errors */ });
-    }, YT_LINK_POLL_INTERVAL_MS);
+function getTabNowPlaying(tabId) {
+    return ytNowPlayingByTab.get(tabId) || null;
 }
+
+function clearTabNowPlaying(tabId) {
+    ytNowPlayingByTab.delete(tabId);
+    if (chrome?.storage?.session?.remove) {
+        try {
+            chrome.storage.session.remove(`tab-${tabId}`);
+        } catch {
+            // ignore storage errors
+        }
+    }
+}
+
+function restoreTabStateFromSession() {
+    if (!chrome?.storage?.session?.get) {
+        return;
+    }
+    try {
+        chrome.storage.session.get(null, (items) => {
+            if (chrome.runtime?.lastError) {
+                return;
+            }
+            Object.entries(items || {}).forEach(([key, value]) => {
+                if (key.startsWith("tab-")) {
+                    const tabId = Number(key.slice(4));
+                    if (Number.isInteger(tabId) && value) {
+                        ytNowPlayingByTab.set(tabId, value);
+                    }
+                }
+            });
+        });
+    } catch {
+        // ignore session restore errors
+    }
+}
+
+restoreTabStateFromSession();
+
+chrome.tabs?.onRemoved?.addListener((tabId) => {
+    clearTabNowPlaying(tabId);
+});
 
 async function ensureActiveRoomId() {
     if (!activeRoomIdCache) {
@@ -106,38 +113,25 @@ chrome.runtime.onInstalled.addListener(async () => {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     (async () => {
         try {
-            if (msg?.type === "YTLINK_FROM_IFRAME") {
-                const tabId = sender?.tab?.id;
-                if (typeof tabId === "number") {
-                    const payload = {
-                        href: msg.payload?.href || "",
-                        id: msg.payload?.id || "",
-                        title: msg.payload?.title || "",
-                        channel: msg.payload?.channel || "",
-                        reason: msg.payload?.reason || "iframe",
-                        ts: Date.now()
-                    };
-                    const frameId = typeof sender?.frameId === "number" ? sender.frameId : null;
-                    const existingEntry = ytLinkByTab.get(tabId) || null;
-                    const mergedPayload = mergeYtPayload(existingEntry, payload);
-                    ytLinkByTab.set(tabId, {
-                        frameId: typeof frameId === "number" ? frameId : (existingEntry?.frameId ?? null),
-                        payload: mergedPayload
-                    });
-                    try {
-                        await chrome.tabs.sendMessage(tabId, { type: "YTLINK_UPDATE", payload: mergedPayload });
-                    } catch {
-                        // no listener on page; ignore
-                    }
-                }
+            if (msg?.type === "yt-now-playing" && typeof sender?.tab?.id === "number") {
+                const tabId = sender.tab.id;
+                const frameId = typeof sender?.frameId === "number" ? sender.frameId : null;
+                const payload = {
+                    href: msg.payload?.href || "",
+                    title: msg.payload?.title || "",
+                    videoId: msg.payload?.videoId || "",
+                    updatedAt: Date.now(),
+                    frameId
+                };
+                updateTabNowPlaying(tabId, payload);
                 sendResponse?.({ ok: true });
                 return;
             }
 
-            if (msg?.type === "GET_YTLINK") {
+            if (msg?.type === "get-now-playing") {
                 const tabId = sender?.tab?.id;
-                const currentEntry = typeof tabId === "number" ? ytLinkByTab.get(tabId) : null;
-                sendResponse?.({ ok: true, current: currentEntry?.payload || null });
+                const current = typeof tabId === "number" ? getTabNowPlaying(tabId) : null;
+                sendResponse?.(current || null);
                 return;
             }
 

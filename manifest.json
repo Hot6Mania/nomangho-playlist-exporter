@@ -22,9 +22,20 @@
   "host_permissions": [
     "https://*/",
     "http://*/",
-    "https://www.youtube.com/*"
+    "https://www.youtube.com/*",
+    "*://*.youtube.com/*"
   ],
   "content_scripts": [
+    {
+      "matches": [
+        "*://*.youtube.com/*"
+      ],
+      "js": [
+        "src/youtube.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    },
     {
       "matches": [
         "<all_urls>"
@@ -32,16 +43,6 @@
       "js": [
         "src/content.js"
       ],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": [
-        "https://www.youtube.com/embed/*"
-      ],
-      "js": [
-        "src/yt-embed-probe.js"
-      ],
-      "all_frames": true,
       "run_at": "document_idle"
     }
   ],
