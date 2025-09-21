@@ -100,16 +100,57 @@ export async function addTrack(roomId, track, roomName) {
     if (!roomId) return { added: false, tracks: [] };
     const store = await readTrackStore();
     const tracks = store[roomId] ? [...store[roomId]] : [];
-    const key = duplicateKey(track);
-    const lastTrack = tracks[tracks.length - 1];
     const normaliseVideoId = (value) => String(value || "").trim().toLowerCase();
     const newVideoId = normaliseVideoId(track.videoId);
+
+    let merged = false;
+    if (newVideoId) {
+        for (let i = 0; i < tracks.length; i++) {
+            const existing = tracks[i];
+            if (!existing) continue;
+            const existingVideoId = normaliseVideoId(existing.videoId);
+            if (!existingVideoId || existingVideoId !== newVideoId) continue;
+            const updated = { ...existing };
+            let changed = false;
+            const applyField = (field) => {
+                const rawIncoming = track[field];
+                const incoming = typeof rawIncoming === "string" ? rawIncoming.trim() : rawIncoming;
+                const current = typeof updated[field] === "string" ? updated[field].trim() : updated[field];
+                if (!incoming) return;
+                if (!current) {
+                    updated[field] = incoming;
+                    changed = true;
+                }
+            };
+            applyField("title");
+            applyField("channel");
+            applyField("watchUrl");
+            if (!updated.videoId && track.videoId) {
+                updated.videoId = String(track.videoId).trim();
+                changed = true;
+            }
+            if (track.ts && (!updated.ts || track.ts > updated.ts)) {
+                updated.ts = track.ts;
+                changed = true;
+            }
+            if (changed) {
+                tracks[i] = updated;
+                merged = true;
+            }
+        }
+        if (merged) {
+            store[roomId] = tracks;
+            await writeTrackStore(store);
+        }
+    }
+    const key = duplicateKey(track);
+    const lastTrack = tracks[tracks.length - 1];
     const lastVideoId = normaliseVideoId(lastTrack?.videoId);
     const sameVideoId = Boolean(lastTrack && newVideoId && lastVideoId && newVideoId === lastVideoId);
     const isSameAsLast = Boolean(lastTrack && (sameVideoId || (!newVideoId && !lastVideoId && duplicateKey(lastTrack) === key)));
     const existingKeys = new Set(tracks.map(duplicateKey));
     let added = false;
-    if (!isSameAsLast && !existingKeys.has(key)) {
+    if (!merged && !isSameAsLast && !existingKeys.has(key)) {
         tracks.push(track);
         store[roomId] = tracks;
         await writeTrackStore(store);

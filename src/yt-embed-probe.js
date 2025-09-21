@@ -19,11 +19,11 @@
         return { href, id, title, channel };
     }
 
-    function publish(reason) {
+    function publish(reason, force = false) {
         const data = readLink();
         if (!data || !data.href) return;
         const signature = `${data.href}|${data.title || ""}|${data.channel || ""}`;
-        if (signature === lastSignature && reason !== "api") return;
+        if (!force && signature === lastSignature && reason !== "api") return;
         lastSignature = signature;
         chrome.runtime.sendMessage({
             type: "YTLINK_FROM_IFRAME",
@@ -37,6 +37,13 @@
     observer.observe(document.documentElement, { childList: true, subtree: true });
 
     setInterval(() => publish("interval"), 1000);
+
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+        if (msg?.type === "YTLINK_FORCE_PUBLISH") {
+            publish("background-poll", true);
+            sendResponse?.({ ok: true });
+        }
+    });
 
     function hookPlayerAPI() {
         if (!(window.YT && typeof window.YT.Player === "function")) {
