@@ -126,7 +126,7 @@ function renderAddedTracks() {
 
 function renderPlaylistLink(url) {
   if (url) {
-    els.playlistStatus.textContent = "Nomangho 서버가 최신 곡을 YouTube 플레이리스트에 추가했습니다.";
+    els.playlistStatus.textContent = "노망호 서버가 최신 곡을 YouTube 플레이리스트에 추가했습니다.";
     els.playlistLink.href = url;
     els.playlistLink.classList.add("active");
     els.playlistLink.setAttribute("aria-disabled", "false");
