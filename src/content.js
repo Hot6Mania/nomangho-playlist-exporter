@@ -1,4 +1,4 @@
-﻿const TITLE_SELECTOR = ".media-info .title";
+const TITLE_SELECTOR = ".media-info .title";
 const AUTHOR_SELECTOR = ".media-info .author";
 const ROOT_SELECTOR = ".media-info";
 const POLL_INTERVAL_MS = 1000;

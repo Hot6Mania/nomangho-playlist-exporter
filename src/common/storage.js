@@ -1,4 +1,4 @@
-﻿// Shared storage helpers for tracks, room metadata, and settings
+// Shared storage helpers for tracks, room metadata, and settings
 
 export const STORAGE_KEYS = {
     TRACKS: "tracks",

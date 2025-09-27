@@ -1,4 +1,4 @@
-﻿
+
 (() => {
     const host = location.hostname || "";
     const isYouTubeHost = /(^|\.)youtube(?:-nocookie)?\.com$/i.test(host);

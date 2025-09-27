@@ -1,4 +1,4 @@
-﻿const state = {
+const state = {
   track: null,
   addedTracks: [],
   playlistUrl: null,

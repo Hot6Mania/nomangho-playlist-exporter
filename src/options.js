@@ -1,4 +1,4 @@
-﻿import { getSettings, setSettings } from "./common/storage.js";
+import { getSettings, setSettings } from "./common/storage.js";
 
 function showMessage(kind, text) {
     const box = document.querySelector("#optionsMessage");

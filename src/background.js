@@ -1,4 +1,4 @@
-﻿const API_BASE = "https://nomangho.duckdns.org";
+const API_BASE = "https://nomangho.duckdns.org";
 const RECENT_KEY_TTL_MS = 8_000;
 const MAX_TRACK_HISTORY = 20;
 
