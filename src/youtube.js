@@ -1,4 +1,4 @@
-
+﻿
 (() => {
     const host = location.hostname || "";
     const isYouTubeHost = /(^|\.)youtube(?:-nocookie)?\.com$/i.test(host);
@@ -7,7 +7,7 @@
     const TITLE_SELECTOR = "a.ytp-title-link";
     const CHANNEL_SELECTOR = ".ytp-title-channel-name, .ytp-title-channel-name a, .ytp-title-channel-logo + span";
     const BRIDGE_MESSAGE = "nomangho:yt-now-playing";
-    const BRIDGE_ATTR = "data-nomangho-yt-bridge-injected";
+    const PARENT_MESSAGE_TYPE = "SYNCTUBE_IFRAME_NOWPLAYING";
 
     const safeTrim = (value) => {
         if (typeof value === "string") return value.trim();
@@ -360,350 +360,32 @@
     };
     window.addEventListener("message", messageHandler, false);
 
-    const pageBridgeScript = `(() => {
-        const BRIDGE_MESSAGE = "nomangho:yt-now-playing";
-        const BRIDGE_FLAG = "__nomanghoYTBridgeInjected__";
-        if (window[BRIDGE_FLAG]) return;
-        window[BRIDGE_FLAG] = true;
+    let mainWorldBridgeLastRequestTs = 0;
 
-        const safeTrim = (value) => {
-            if (typeof value === "string") return value.trim();
-            if (value === null || value === undefined) return "";
-            return String(value).trim();
-        };
-
-        const collapseWhitespace = (value) => safeTrim(value).replace(/\s+/g, " ").trim();
-        const buildWatchUrl = (videoId) => (videoId ? "https://www.youtube.com/watch?v=" + encodeURIComponent(videoId) : "");
-
-        const pickFirstString = (candidates, transform) => {
-            if (!Array.isArray(candidates)) return "";
-            for (const candidate of candidates) {
-                if (candidate === null || candidate === undefined) continue;
-                const value = typeof transform === "function" ? transform(candidate) : candidate;
-                if (!value) continue;
-                if (typeof value === "string") {
-                    const trimmed = value.trim();
-                    if (trimmed) return trimmed;
-                    continue;
-                }
-                return value;
-            }
-            return "";
-        };
-
-        const extractVideoId = (value) => {
-            if (!value) return "";
-            const str = String(value);
-            try {
-                const url = new URL(str, location.href);
-                const searchKeys = ["v", "vi", "video_id", "videoId"];
-                for (const key of searchKeys) {
-                    const candidate = url.searchParams.get(key);
-                    if (candidate) return candidate;
-                }
-                const pathMatch = url.pathname.match(/\/(?:embed|v|vi|shorts)\/([^/?#]+)/);
-                if (pathMatch && pathMatch[1]) return pathMatch[1];
-                const tailMatch = url.pathname.match(/\/([a-zA-Z0-9_-]{6,})$/);
-                if (tailMatch && tailMatch[1]) return tailMatch[1];
-            } catch {}
-            const fallbackMatch = str.match(/(?:v=|\/embed\/|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{6,})/);
-            return fallbackMatch && fallbackMatch[1] ? fallbackMatch[1] : "";
-        };
-
-        const shouldTriggerForUrl = (url) => {
-            if (!url) return false;
-            try {
-                const str = String(url);
-                return str.includes("/player?") || str.includes("/next?") || str.includes("/watchtime?");
-            } catch {
-                return false;
-            }
-        };
-
-        const readDetails = () => {
-            let videoId = "";
-            let title = "";
-            let channel = "";
-            let href = "";
-
-            const applyDetails = (details) => {
-                if (!details) return;
-                if (!videoId && details.videoId) videoId = safeTrim(details.videoId);
-                if (!title && details.title) title = collapseWhitespace(details.title);
-                const author = details.author || details.channel || details.ownerChannelName;
-                if (!channel && author) channel = collapseWhitespace(author);
-            };
-
-            try { applyDetails(window.ytInitialPlayerResponse?.videoDetails); } catch {}
-            try { applyDetails(window.ytInitialData?.playerResponse?.videoDetails); } catch {}
-            try { applyDetails(window.ytInitialData?.playerResponse?.microformat?.playerMicroformatRenderer); } catch {}
-
-            try {
-                const args = window.ytplayer?.config?.args || {};
-                applyDetails({
-                    videoId: args.video_id || args.videoId,
-                    title: args.title,
-                    channel: args.author || args.channel
-                });
-                const pr = args.player_response;
-                if (pr) {
-                    if (typeof pr === "string") {
-                        try {
-                            const parsed = JSON.parse(pr);
-                            applyDetails(parsed?.videoDetails);
-                            if (!channel && parsed?.videoDetails?.author) {
-                                channel = collapseWhitespace(parsed.videoDetails.author);
-                            }
-                        } catch {}
-                    } else if (typeof pr === "object") {
-                        applyDetails(pr?.videoDetails);
-                        if (!channel && pr?.videoDetails?.author) {
-                            channel = collapseWhitespace(pr.videoDetails.author);
-                        }
-                    }
-                }
-            } catch {}
-
-            if (!href) {
-                href = pickFirstString([
-                    document.querySelector('link[rel="canonical"]')?.href,
-                    document.querySelector('meta[itemprop="url"]')?.content,
-                    document.querySelector('meta[property="og:video:url"]')?.content,
-                    document.querySelector('meta[property="og:url"]')?.content,
-                    document.querySelector('link[rel="shortlinkUrl"]')?.href,
-                    document.querySelector('meta[itemprop="embedURL"]')?.content
-                ], safeTrim);
-            }
-
-            if (!videoId) {
-                videoId = pickFirstString([
-                    videoId,
-                    document.querySelector('meta[itemprop="videoId"]')?.content,
-                    document.querySelector('meta[itemprop="videoIdString"]')?.content,
-                    document.querySelector('meta[property="og:video:url"]')?.content,
-                    document.querySelector('meta[property="og:url"]')?.content,
-                    href
-                ], safeTrim);
-                if (videoId) {
-                    const extracted = extractVideoId(videoId);
-                    if (extracted) videoId = extracted;
-                }
-            }
-
-            if (videoId && !href) {
-                href = buildWatchUrl(videoId);
-            }
-
-            if (!title) {
-                title = pickFirstString([
-                    document.querySelector('meta[property="og:title"]')?.content,
-                    document.querySelector('meta[name="title"]')?.content,
-                    document.querySelector('meta[itemprop="name"]')?.content,
-                    document.title ? document.title.replace(/ - YouTube$/i, "") : ""
-                ], collapseWhitespace);
-            }
-
-            if (!channel) {
-                channel = pickFirstString([
-                    document.querySelector('.ytp-title-channel-name')?.textContent,
-                    document.querySelector('.ytp-title-channel-name a')?.textContent,
-                    document.querySelector('.ytp-title-channel-logo + span')?.textContent,
-                    document.querySelector('meta[itemprop="author"]')?.content,
-                    document.querySelector('meta[name="author"]')?.content
-                ], collapseWhitespace);
-            }
-
-            return { videoId, title, channel, href };
-        };
-
-        let lastSent = { videoId: "", title: "", channel: "", href: "" };
-
-        const hasMeaningfulData = (payload) => Boolean(payload && (payload.videoId || payload.href || payload.title));
-        const hasChanged = (payload) => (
-            payload.videoId !== lastSent.videoId ||
-            payload.title !== lastSent.title ||
-            payload.channel !== lastSent.channel ||
-            payload.href !== lastSent.href
-        );
-
-        const emit = (reason) => {
-            try {
-                const payload = readDetails();
-                if (!hasMeaningfulData(payload)) return;
-                if (payload.videoId && !payload.href) {
-                    payload.href = buildWatchUrl(payload.videoId);
-                }
-                if (!payload.title && document.title) {
-                    payload.title = collapseWhitespace(document.title.replace(/ - YouTube$/i, ""));
-                }
-                if (!payload.channel) {
-                    const domChannel = pickFirstString([
-                        document.querySelector('.ytp-title-channel-name')?.textContent,
-                        document.querySelector('.ytp-title-channel-name a')?.textContent,
-                        document.querySelector('.ytp-title-channel-logo + span')?.textContent
-                    ], collapseWhitespace);
-                    if (domChannel) payload.channel = domChannel;
-                }
-                if (!hasChanged(payload)) return;
-                lastSent = { ...payload };
-                window.postMessage({
-                    __nomYT: true,
-                    type: BRIDGE_MESSAGE,
-                    payload: { ...payload, source: "bridge", reason }
-                }, "*");
-            } catch {}
-        };
-
-        let timer = null;
-        const schedule = (reason) => {
-            if (timer) clearTimeout(timer);
-            timer = setTimeout(() => emit(reason), 0);
-        };
-
-        const navEvents = [
-            "yt-navigate-start",
-            "yt-navigate-finish",
-            "yt-navigate-cache",
-            "yt-page-data-updated",
-            "yt-player-updated",
-            "spfdone"
-        ];
-        navEvents.forEach((eventName) => {
-            window.addEventListener(eventName, () => schedule(eventName), true);
-            document.addEventListener(eventName, () => schedule(eventName), true);
-        });
-
-        document.addEventListener("visibilitychange", () => schedule("visibilitychange"), true);
-
-        try {
-            const origPush = history.pushState;
-            history.pushState = function () {
-                const result = origPush.apply(this, arguments);
-                schedule("pushState");
-                return result;
-            };
-        } catch {}
-
-        try {
-            const origReplace = history.replaceState;
-            history.replaceState = function () {
-                const result = origReplace.apply(this, arguments);
-                schedule("replaceState");
-                return result;
-            };
-        } catch {}
-
-        if (typeof window.fetch === "function") {
-            const origFetch = window.fetch;
-            window.fetch = function () {
-                const response = origFetch.apply(this, arguments);
-                Promise.resolve(response).then(() => {
-                    try {
-                        const req = arguments[0];
-                        const url = typeof req === "string"
-                            ? req
-                            : (req && (req.url || (typeof req.toString === "function" ? req.toString() : ""))) || "";
-                        if (shouldTriggerForUrl(url)) {
-                            schedule("fetch");
-                        }
-                    } catch {}
-                });
-                return response;
-            };
-        }
-
-        if (typeof XMLHttpRequest !== "undefined") {
-            const origOpen = XMLHttpRequest.prototype.open;
-            XMLHttpRequest.prototype.open = function (method, url) {
-                if (typeof url === "string") {
-                    this.addEventListener("load", () => {
-                        if (shouldTriggerForUrl(url)) {
-                            schedule("xhr");
-                        }
-                    });
-                }
-                return origOpen.apply(this, arguments);
-            };
-        }
-
-        try {
-            const descriptor = Object.getOwnPropertyDescriptor(window, "ytInitialPlayerResponse");
-            let currentValue = window.ytInitialPlayerResponse;
-            if (!descriptor || descriptor.configurable !== false) {
-                Object.defineProperty(window, "ytInitialPlayerResponse", {
-                    configurable: true,
-                    enumerable: true,
-                    get() { return currentValue; },
-                    set(value) {
-                        currentValue = value;
-                        schedule("ytInitialPlayerResponse");
-                    }
-                });
-            }
-        } catch {}
-
-        try {
-            const descriptor = Object.getOwnPropertyDescriptor(window, "ytplayer");
-            let currentValue = window.ytplayer;
-            if (!descriptor || descriptor.configurable !== false) {
-                Object.defineProperty(window, "ytplayer", {
-                    configurable: true,
-                    enumerable: true,
-                    get() { return currentValue; },
-                    set(value) {
-                        currentValue = value;
-                        schedule("ytplayer");
-                    }
-                });
-            }
-        } catch {}
-
-        setInterval(() => emit("interval"), 1000);
-        schedule("init");
-        emit("init");
-    })();`;
-
-    const injectBridge = () => {
-        if (!document || !document.documentElement) return false;
-        if (document.documentElement.getAttribute(BRIDGE_ATTR) === "1") {
-            return true;
-        }
-        try {
-            const script = document.createElement("script");
-            script.type = "text/javascript";
-            script.textContent = pageBridgeScript;
-            (document.documentElement || document.head || document.body).appendChild(script);
-            if (script.parentNode) {
-                script.parentNode.removeChild(script);
-            }
-            document.documentElement.setAttribute(BRIDGE_ATTR, "1");
-            return true;
-        } catch {
-            return false;
-        }
-    };
-
-    let reinjectIntervalId = null;
-    const ensureBridge = () => {
-        if (injectBridge()) {
-            if (reinjectIntervalId) {
-                clearInterval(reinjectIntervalId);
-                reinjectIntervalId = null;
-            }
+    const requestMainWorldBridge = (reason) => {
+        if (!chrome?.runtime?.sendMessage) return;
+        const now = Date.now();
+        if (now - mainWorldBridgeLastRequestTs < 1500) {
             return;
         }
-        if (reinjectIntervalId) return;
-        reinjectIntervalId = setInterval(() => {
-            if (injectBridge()) {
-                clearInterval(reinjectIntervalId);
-                reinjectIntervalId = null;
-            }
-        }, 500);
+        mainWorldBridgeLastRequestTs = now;
+        try {
+            chrome.runtime.sendMessage({
+                type: "YT_REQUEST_MAIN_WORLD_BRIDGE",
+                payload: {
+                    reason: reason || "unspecified",
+                    href: location.href,
+                    ts: now
+                }
+            }, () => {
+                const err = chrome.runtime?.lastError;
+                void err;
+            });
+        } catch { /* ignore messaging errors */ }
     };
 
-    ensureBridge();
-
     handleDomUpdate();
+    requestMainWorldBridge("initial");
 
     let cleanedUp = false;
     const cleanup = () => {
@@ -711,10 +393,6 @@
         cleanedUp = true;
         try { observer.disconnect(); } catch {}
         try { clearInterval(intervalId); } catch {}
-        if (reinjectIntervalId) {
-            try { clearInterval(reinjectIntervalId); } catch {}
-            reinjectIntervalId = null;
-        }
         navEvents.forEach((eventName) => {
             window.removeEventListener(eventName, navigationHandler, true);
             document.removeEventListener(eventName, navigationHandler, true);

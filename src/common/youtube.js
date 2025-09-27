@@ -118,3 +118,19 @@ export async function addVideoToPlaylist(playlistId, videoId) {
     const json = await ytFetch("/playlistItems?part=snippet", "POST", body);
     return json?.id;
 }
+
+export async function searchVideos(query, { maxResults = 5 } = {}) {
+    if (!query || !query.trim()) {
+        return [];
+    }
+    const params = new URLSearchParams({
+        part: "snippet",
+        type: "video",
+        order: "relevance",
+        maxResults: String(Math.max(1, Math.min(maxResults, 10))),
+        q: query.trim(),
+        videoEmbeddable: "true"
+    });
+    const json = await ytFetch(`/search?${params.toString()}`, "GET");
+    return Array.isArray(json?.items) ? json.items : [];
+}

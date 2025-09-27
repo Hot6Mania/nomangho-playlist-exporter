@@ -149,6 +149,37 @@ export async function addTrack(roomId, track, roomName) {
     const sameVideoId = Boolean(lastTrack && newVideoId && lastVideoId && newVideoId === lastVideoId);
     const isSameAsLast = Boolean(lastTrack && (sameVideoId || (!newVideoId && !lastVideoId && duplicateKey(lastTrack) === key)));
     const existingKeys = new Set(tracks.map(duplicateKey));
+    if (!merged && newVideoId && existingKeys.has(key)) {
+        let updatedExisting = false;
+        for (let i = tracks.length - 1; i >= 0; i--) {
+            const existing = tracks[i];
+            if (!existing) continue;
+            if (duplicateKey(existing) !== key) continue;
+            const existingVideoId = normaliseVideoId(existing.videoId);
+            if (existingVideoId === newVideoId) {
+                updatedExisting = true;
+                break;
+            }
+            if (!existingVideoId) {
+                const updated = { ...existing };
+                updated.videoId = track.videoId;
+                if (track.watchUrl) updated.watchUrl = track.watchUrl;
+                if (track.title && !updated.title) updated.title = track.title;
+                if (track.channel && !updated.channel) updated.channel = track.channel;
+                updated.ts = track.ts || Date.now();
+                tracks[i] = updated;
+                store[roomId] = tracks;
+                await writeTrackStore(store);
+                updatedExisting = true;
+                merged = true;
+                break;
+            }
+        }
+        if (updatedExisting) {
+            existingKeys.clear();
+            tracks.forEach(t => existingKeys.add(duplicateKey(t)));
+        }
+    }
     let added = false;
     if (!merged && !isSameAsLast && !existingKeys.has(key)) {
         tracks.push(track);

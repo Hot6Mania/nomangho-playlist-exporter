@@ -1,48 +1,27 @@
-﻿{
+{
   "manifest_version": 3,
-  "name": "SyncTube 유튜브 재생목록 생성기",
+  "name": "Nomangho Playlist Exporter",
   "version": "1.0.0",
-  "description": "Collects currently playing tracks from a SyncTube-like site and exports them to CSV or a YouTube playlist.",
+  "description": "Send the current SyncTube song to the Nomangho playlist service.",
   "icons": {
     "16": "assets/icon16.png",
     "48": "assets/icon48.png",
     "128": "assets/icon128.png"
   },
   "action": {
-    "default_title": "SyncTube Exporter",
+    "default_title": "Nomangho Playlist Exporter",
     "default_popup": "src/popup.html"
   },
-  "options_page": "src/options.html",
   "permissions": [
-    "storage",
-    "identity",
-    "scripting",
-    "tabs"
+    "storage"
   ],
   "host_permissions": [
-    "https://*/",
-    "http://*/",
-    "https://www.youtube.com/*",
-    "*://*.youtube.com/*",
-    "https://*.youtube-nocookie.com/*",
-    "https://www.googleapis.com/*"
+    "https://nomangho.duckdns.org/*"
   ],
   "content_scripts": [
     {
       "matches": [
-        "*://*.youtube.com/*",
-        "https://*.youtube-nocookie.com/*"
-      ],
-      "js": [
-        "src/youtube.js"
-      ],
-      "run_at": "document_idle",
-      "all_frames": true,
-      "match_about_blank": true
-    },
-    {
-      "matches": [
-        "<all_urls>"
+        "https://sync-tube.de/*"
       ],
       "js": [
         "src/content.js"
@@ -51,15 +30,7 @@
     }
   ],
   "background": {
-    "service_worker": "src/background.js",
-    "type": "module"
-  },
-  "oauth2": {
-    "client_id": "167372131380-ononri3opot09qdgl3s47hiq62u0dg6q.apps.googleusercontent.com",
-    "scopes": [
-      "https://www.googleapis.com/auth/youtube",
-      "https://www.googleapis.com/auth/youtube.force-ssl"
-    ]
+    "service_worker": "src/background.js"
   },
   "minimum_chrome_version": "114"
 }

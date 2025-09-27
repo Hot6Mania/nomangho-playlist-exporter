@@ -1,422 +1,227 @@
-﻿function send(type, payload) {
-    return new Promise((resolve) => {
-        chrome.runtime.sendMessage({ type, payload }, resolve);
-    });
-}
-
-function fmtTime(ts) {
-    try { return new Date(ts).toLocaleString(); } catch { return ""; }
-}
-
-function extractIdFromAny(value) {
-    if (!value) return "";
-    const match = String(value).trim().match(
-        /^.*(?:(?:youtu\.be\/|v\/|vi\/|u\/\w\/|embed\/|shorts\/)|(?:(?:watch)?\?v(?:i)?=|\&v(?:i)?=))([^#\&\?]*).*/
-    );
-    if (match && match[1]) return match[1];
-    return String(value).trim();
-}
-
-function toWatchUrl(videoId) {
-    return videoId ? `https://www.youtube.com/watch?v=${videoId}` : "";
-}
-
-const state = {
-    roomId: null,
-    roomName: "",
-    rooms: [],
-    playlistLink: null
+﻿const state = {
+  track: null,
+  addedTracks: [],
+  playlistUrl: null,
+  note: null,
 };
 
-function qs(selector) {
-    return document.querySelector(selector);
-}
-
-function getRoomIdFromUrl(url) {
-    if (!url) return "";
-    const match = String(url).match(/\/room\/([^/?#]+)/i);
-    return match && match[1] ? match[1] : "";
-}
-
-function getRoomNameFromTitle(title) {
-    if (!title) return "";
-    const parts = title.split(" - ");
-    const name = parts.length > 1 ? parts[0].trim() : title.trim();
-    return name;
-}
-
-function queryActiveTab() {
-    return new Promise((resolve) => {
-        if (!chrome.tabs?.query) {
-            resolve([]);
-            return;
-        }
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (chrome.runtime.lastError) {
-                resolve([]);
-                return;
-            }
-            resolve(tabs || []);
-        });
-    });
-}
-
-async function detectActiveRoom() {
-    const tabs = await queryActiveTab();
-    const tab = tabs[0];
-    if (!tab) return null;
-    const roomId = getRoomIdFromUrl(tab.url || "");
-    if (!roomId) return null;
-    const roomName = getRoomNameFromTitle(tab.title || "");
-    return { roomId, roomName };
-}
+const els = {
+  trackLabel: document.getElementById("trackLabel"),
+  trackTitle: document.getElementById("trackTitle"),
+  trackArtist: document.getElementById("trackArtist"),
+  addedList: document.getElementById("addedList"),
+  playlistStatus: document.getElementById("playlistStatus"),
+  playlistLink: document.getElementById("playlistLink"),
+  message: document.getElementById("message"),
+  refresh: document.getElementById("refresh"),
+};
 
 function setMessage(kind, text) {
-    const box = qs("#message");
-    if (!box) return;
-    if (!text) {
-        box.textContent = "";
-        box.dataset.kind = "";
-        box.classList.add("hidden");
-        return;
-    }
-    box.textContent = text;
-    box.dataset.kind = kind;
-    box.classList.remove("hidden");
+  if (!els.message) return;
+  if (!text) {
+    els.message.textContent = "";
+    els.message.dataset.kind = "";
+    els.message.classList.add("hidden");
+    return;
+  }
+  els.message.textContent = text;
+  els.message.dataset.kind = kind;
+  els.message.classList.remove("hidden");
 }
 
-function renderRooms() {
-    const select = qs("#roomSelect");
-    if (!select) return;
-    const wrapper = select.closest(".field-group");
-    select.innerHTML = "";
+function formatDate(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const yy = String(d.getFullYear()).slice(-2);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yy}.${mm}.${dd}`;
+}
 
-    if (!state.rooms.length) {
-        select.disabled = true;
-        if (wrapper) wrapper.classList.add("room-select-hidden");
-        return;
+function formatTime(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${hh}:${min}`;
+}
+
+function renderTrack() {
+  const track = state.track;
+  if (!track) {
+    els.trackLabel.textContent = "곡 정보를 불러오는 중입니다.";
+    els.trackLabel.classList.add("muted");
+    els.trackTitle.textContent = "";
+    els.trackArtist.textContent = "";
+    return;
+  }
+
+  const labelDate = formatDate(track.updatedAt);
+  const roomLabel = track.roomTitle || track.roomId || "";
+  if (labelDate || roomLabel) {
+    const label = [labelDate, roomLabel].filter(Boolean).join(" - ");
+    els.trackLabel.textContent = label || "최근 감지된 곡";
+  } else {
+    els.trackLabel.textContent = "최근 감지된 곡";
+  }
+  els.trackLabel.classList.remove("muted");
+
+  els.trackTitle.textContent = track.title || "제목 정보를 찾지 못했어요.";
+  els.trackArtist.textContent = track.author ? `아티스트: ${track.author}` : "아티스트 정보를 찾지 못했어요.";
+}
+
+function renderAddedTracks() {
+  const container = els.addedList;
+  if (!container) return;
+
+  if (!state.addedTracks.length) {
+    container.className = "added-empty";
+    container.textContent = "아직 추가된 곡이 없어요.";
+    return;
+  }
+
+  container.className = "added-list";
+  container.innerHTML = "";
+
+  state.addedTracks.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "added-item";
+
+    if (item.thumbnail) {
+      const img = document.createElement("img");
+      img.className = "added-thumb";
+      img.src = item.thumbnail;
+      img.alt = "";
+      row.appendChild(img);
+    } else {
+      const placeholder = document.createElement("div");
+      placeholder.className = "added-thumb";
+      row.appendChild(placeholder);
     }
 
-    state.rooms.forEach(room => {
-        const opt = document.createElement("option");
-        opt.value = room.id;
-        opt.textContent = room.name || room.id;
-        select.appendChild(opt);
+    const info = document.createElement("div");
+    info.className = "added-info";
+
+    const title = document.createElement("p");
+    title.className = "added-title";
+    title.textContent = item.title || "제목 없음";
+    info.appendChild(title);
+
+    if (item.channel) {
+      const channel = document.createElement("p");
+      channel.className = "added-channel";
+      channel.textContent = item.channel;
+      info.appendChild(channel);
+    }
+
+    const meta = document.createElement("p");
+    meta.className = "added-meta";
+    meta.textContent = `추가: ${formatDate(item.addedAt)} ${formatTime(item.addedAt)}`;
+    info.appendChild(meta);
+
+    row.appendChild(info);
+    container.appendChild(row);
+  });
+}
+
+function renderPlaylistLink(url) {
+  if (url) {
+    els.playlistStatus.textContent = "Nomangho 서버가 최신 곡을 YouTube 플레이리스트에 추가했습니다.";
+    els.playlistLink.href = url;
+    els.playlistLink.classList.add("active");
+    els.playlistLink.setAttribute("aria-disabled", "false");
+  } else {
+    els.playlistStatus.textContent = "YouTube 플레이리스트 링크가 준비되면 여기에 표시됩니다.";
+    els.playlistLink.href = "#";
+    els.playlistLink.classList.remove("active");
+    els.playlistLink.setAttribute("aria-disabled", "true");
+  }
+}
+
+function applyNote(note) {
+  if (!note) {
+    setMessage("", "");
+    return;
+  }
+
+  const title = note.title || "";
+  if (note.type === "added") {
+    setMessage("success", `${title || "새 곡"}을(를) 플레이리스트에 추가했어요.`);
+  } else if (note.type === "skipped-duplicate") {
+    setMessage("info", `${title || "해당 곡"}은 이미 추가되어 건너뛰었어요.`);
+  } else if (note.type === "no-results") {
+    setMessage("info", "검색 결과를 찾지 못했어요. 제목/아티스트 정보를 확인해주세요.");
+  } else if (note.type === "skip-empty-query") {
+    setMessage("info", "곡 정보가 부족해서 자동 추가를 건너뛰었어요.");
+  } else if (note.type === "invalid-result") {
+    setMessage("error", "검색 결과가 올바르지 않아 추가하지 못했어요.");
+  } else if (note.type === "error") {
+    setMessage("error", note.message || "자동 추가 중 오류가 발생했어요.");
+  } else {
+    setMessage("info", "자동 추가 상태가 업데이트되었어요.");
+  }
+}
+
+function requestStatus() {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: "GET_STATUS" }, (response) => {
+      const err = chrome.runtime.lastError;
+      if (err) {
+        setMessage("error", err.message);
+        resolve(null);
+        return;
+      }
+      if (!response?.ok) {
+        setMessage("error", response?.error || "상태 정보를 불러오지 못했어요.");
+        resolve(null);
+        return;
+      }
+      resolve(response);
     });
-
-    if (state.roomId) {
-        select.value = state.roomId;
-    }
-    select.disabled = true;
-    if (wrapper) wrapper.classList.add("room-select-hidden");
+  });
 }
 
-function renderTracks(tracks) {
-    const tbody = qs("#tracks tbody");
-    if (!tbody) return;
-    tbody.innerHTML = "";
-    if (!tracks.length) {
-        const emptyRow = document.createElement("tr");
-        const emptyCell = document.createElement("td");
-        emptyCell.colSpan = 6;
-        emptyCell.className = "empty";
-        emptyCell.textContent = "현재 수집된 곡이 없습니다.";
-        emptyRow.appendChild(emptyCell);
-        tbody.appendChild(emptyRow);
-        return;
-    }
+function applyStatus(status) {
+  if (!status) {
+    return;
+  }
+  state.track = status.track || null;
+  state.addedTracks = Array.isArray(status.addedTracks) ? status.addedTracks : [];
+  state.playlistUrl = status.playlistUrl || null;
+  state.note = status.note || null;
 
-    tracks.forEach((track, index) => {
-        const tr = document.createElement("tr");
-
-        const indexCell = document.createElement("td");
-        indexCell.textContent = String(index + 1);
-        tr.appendChild(indexCell);
-
-        const titleCell = document.createElement("td");
-        titleCell.className = "ellipsize";
-        titleCell.textContent = track.title || "";
-        titleCell.title = track.title || "";
-        tr.appendChild(titleCell);
-
-        const channelCell = document.createElement("td");
-        channelCell.className = "ellipsize";
-        channelCell.textContent = track.channel || "";
-        channelCell.title = track.channel || "";
-        tr.appendChild(channelCell);
-
-        const videoCell = document.createElement("td");
-        const videoId = track.videoId || "";
-        if (videoId) {
-            const link = document.createElement("a");
-            link.href = track.watchUrl || toWatchUrl(videoId);
-            link.target = "_blank";
-            link.rel = "noopener";
-            link.textContent = videoId;
-            link.title = link.href;
-            videoCell.appendChild(link);
-        }
-        tr.appendChild(videoCell);
-
-        const timeCell = document.createElement("td");
-        timeCell.textContent = fmtTime(track.ts);
-        tr.appendChild(timeCell);
-
-        const actionCell = document.createElement("td");
-        const removeBtn = document.createElement("button");
-        removeBtn.className = "btn-remove";
-        removeBtn.dataset.index = String(index);
-        removeBtn.textContent = "삭제";
-        actionCell.appendChild(removeBtn);
-        tr.appendChild(actionCell);
-
-        tbody.appendChild(tr);
-    });
+  renderTrack();
+  renderAddedTracks();
+  renderPlaylistLink(state.playlistUrl);
+  applyNote(state.note);
 }
 
-async function refreshTracks() {
-    if (!state.roomId) {
-        renderTracks([]);
-        renderRooms();
-        return;
-    }
-    const res = await send("GET_TRACKS", { roomId: state.roomId });
-    if (!res?.ok) {
-        setMessage("error", res?.error || "트랙을 불러오지 못했습니다.");
-        return;
-    }
-    if (res.roomId) {
-        state.roomId = res.roomId;
-    }
-    if (res.roomName) {
-        state.roomName = res.roomName;
-    }
-    renderTracks(res.tracks || []);
-    renderRooms();
+async function refreshState() {
+  const status = await requestStatus();
+  applyStatus(status);
 }
 
-async function loadRooms() {
-    const res = await send("GET_ROOMS");
-    if (!res?.ok) return;
-    state.rooms = res.rooms || [];
-    if (state.roomId && !state.rooms.some(r => r.id === state.roomId)) {
-        state.rooms.unshift({ id: state.roomId, name: state.roomName || state.roomId, trackCount: 0 });
-    }
-    if (!state.roomId && state.rooms.length) {
-        state.roomId = state.rooms[0].id;
-        state.roomName = state.rooms[0].name || state.roomId;
-    } else if (state.roomId) {
-        const active = state.rooms.find(r => r.id === state.roomId);
-        if (active && active.name) {
-            state.roomName = active.name;
-        }
-    }
-    renderRooms();
-}
-
-async function applyActiveRoom(roomId, roomName) {
-    if (!roomId) return;
-    state.roomId = roomId;
-    if (roomName) {
-        state.roomName = roomName;
-    }
-    await send("SET_ACTIVE_ROOM", { roomId: state.roomId, roomName: state.roomName });
-}
-
-async function clearTracks() {
-    if (!state.roomId) return;
-    const res = await send("CLEAR_TRACKS", { roomId: state.roomId });
-    if (!res?.ok) {
-        setMessage("error", res?.error || "리스트를 비우지 못했습니다.");
-        return;
-    }
-    setMessage("info", "리스트를 비웠습니다.");
-    await refreshTracks();
-}
-
-async function addTrackManually(e) {
-    e?.preventDefault?.();
-    const title = qs("#manualTitle").value.trim();
-    const channel = qs("#manualChannel").value.trim();
-    const input = qs("#manualVideoId").value.trim();
-    const videoId = extractIdFromAny(input);
-    if (!videoId) {
-        setMessage("error", "유효한 YouTube ID 또는 링크를 입력하세요.");
-        return;
-    }
-    const res = await send("MANUAL_ADD_TRACK", {
-        roomId: state.roomId,
-        roomName: state.roomName,
-        track: { title, channel, videoId }
-    });
-    if (!res?.ok) {
-        setMessage("error", res?.error || "곡을 추가하지 못했습니다.");
-        return;
-    }
-    qs("#manualTitle").value = "";
-    qs("#manualChannel").value = "";
-    qs("#manualVideoId").value = "";
-    setMessage("success", "곡을 추가했습니다.");
-    renderTracks(res.tracks || []);
-    renderRooms();
-}
-
-async function removeTrack(index) {
-    const res = await send("REMOVE_TRACK", { roomId: state.roomId, index });
-    if (!res?.ok) {
-        setMessage("error", res?.error || "곡을 삭제하지 못했습니다.");
-        return;
-    }
-    setMessage("info", "곡을 삭제했습니다.");
-    renderTracks(res.tracks || []);
-    renderRooms();
-}
-
-function exportCSV() {
-    send("GET_TRACKS", { roomId: state.roomId }).then(res => {
-        if (!res?.ok) {
-            setMessage("error", "트랙을 내보내지 못했습니다.");
-            return;
-        }
-        const rows = [["title", "channel", "videoId", "timestamp"]];
-        (res.tracks || []).forEach(t => {
-            rows.push([t.title || "", t.channel || "", t.videoId || "", new Date(t.ts || Date.now()).toISOString()]);
-        });
-        const csv = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `synctube_export_${state.roomId || "room"}_${Date.now()}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
-    });
-}
-
-function handleTableClick(e) {
-    const btn = e.target.closest(".btn-remove");
-    if (!btn) return;
-    const index = Number(btn.dataset.index);
-    if (!Number.isInteger(index)) return;
-    removeTrack(index);
-}
-
-async function loadSettings() {
-    const r = await send("GET_SETTINGS");
-    if (!r?.ok) return;
-    qs("#playlistName").value = r.settings?.defaultPlaylistName || "";
-    const keepLinked = typeof r.settings?.keepYouTubeLinked === "boolean"
-        ? r.settings.keepYouTubeLinked
-        : !!r.settings?.enableYouTubeApi;
-    qs("#keepYouTubeLinked").checked = keepLinked;
-}
-
-async function saveSettings() {
-    const name = qs("#playlistName").value.trim();
-    const keepYouTubeLinked = qs("#keepYouTubeLinked").checked;
-    await send("SET_SETTINGS", { defaultPlaylistName: name || "SyncTube Export", keepYouTubeLinked });
-}
-
-async function createPlaylistAndRemember() {
-    await saveSettings();
-    const name = qs("#playlistName").value.trim() || "SyncTube Export";
-    const r = await send("CREATE_YT_PLAYLIST", { name });
-    if (!r?.ok) {
-        setMessage("error", r?.error || "플레이리스트 생성 실패");
-        return null;
-    }
-    const id = r.playlistId;
-    if (!id) {
-        setMessage("error", "playlistId가 없습니다.");
-        return null;
-    }
-    state.playlistLink = `https://www.youtube.com/playlist?list=${id}`;
-    setMessage("success", "플레이리스트를 생성했습니다.");
-    renderPlaylistLink();
-    return id;
-}
-
-async function onCreatePlaylist() {
-    await createPlaylistAndRemember();
-}
-
-async function addAllToPlaylistById(playlistId, { notify = true } = {}) {
-    const r = await send("ADD_ALL_TO_PLAYLIST", { playlistId, roomId: state.roomId });
-    if (!r?.ok) {
-        setMessage("error", r?.error || "플레이리스트에 추가하지 못했습니다.");
-        return null;
-    }
-    state.playlistLink = `https://www.youtube.com/playlist?list=${playlistId}`;
-    if (notify) {
-        setMessage("success", `${r.count || 0}곡을 추가했습니다.`);
-    }
-    renderPlaylistLink();
-    return r.count || 0;
-}
-
-async function onAddAllToPlaylist() {
-    await saveSettings();
-    let playlistId = extractIdFromAny(qs("#playlistIdInput").value.trim());
-    if (!playlistId && state.playlistLink) {
-        const match = state.playlistLink.match(/list=([a-zA-Z0-9_-]+)/);
-        playlistId = match ? match[1] : "";
-    }
-    if (!playlistId) {
-        setMessage("error", "플레이리스트 ID를 입력하세요.");
-        return;
-    }
-    await addAllToPlaylistById(playlistId);
-}
-
-async function onCreateAndFill() {
-    const playlistId = await createPlaylistAndRemember();
-    if (!playlistId) return;
-    const count = await addAllToPlaylistById(playlistId, { notify: false });
-    if (count !== null) {
-        setMessage("success", `새로 만든 플레이리스트에 ${count}곡을 추가했습니다.`);
-        renderPlaylistLink();
-    }
-}
-
-function renderPlaylistLink() {
-    const linkEl = qs("#playlistLink");
-    if (!linkEl) return;
-    if (!state.playlistLink) {
-        linkEl.classList.add("hidden");
-        linkEl.setAttribute("href", "#");
-        linkEl.textContent = "YouTube에서 플레이리스트 열기";
-        return;
-    }
-    linkEl.classList.remove("hidden");
-    linkEl.setAttribute("href", state.playlistLink);
-    linkEl.textContent = state.playlistLink;
-}
-
-window.addEventListener("DOMContentLoaded", async () => {
-    const detected = await detectActiveRoom();
-    if (detected?.roomId) {
-        await applyActiveRoom(detected.roomId, detected.roomName);
-    }
-
-    await loadRooms();
-
-    if (!state.roomId && state.rooms.length) {
-        await applyActiveRoom(state.rooms[0].id, state.rooms[0].name);
-    }
-
-    await refreshTracks();
-    renderPlaylistLink();
-
-    qs("#btnClear").addEventListener("click", clearTracks);
-    qs("#btnCsv").addEventListener("click", exportCSV);
-    qs("#btnCreate").addEventListener("click", onCreatePlaylist);
-    qs("#btnCreateFill").addEventListener("click", onCreateAndFill);
-    qs("#btnAddAll").addEventListener("click", onAddAllToPlaylist);
-    qs("#manualForm").addEventListener("submit", addTrackManually);
-    qs("#tracks").addEventListener("click", handleTableClick);
-    qs("#keepYouTubeLinked").addEventListener("change", saveSettings);
-    qs("#playlistName").addEventListener("change", saveSettings);
-
-    setInterval(refreshTracks, 2000);
+chrome.storage.onChanged?.addListener((changes, area) => {
+  if (area !== "local") return;
+  if (Object.prototype.hasOwnProperty.call(changes, "lastTrack")) {
+    state.track = changes.lastTrack?.newValue || null;
+    renderTrack();
+  }
+  if (Object.prototype.hasOwnProperty.call(changes, "addedTracks")) {
+    state.addedTracks = changes.addedTracks?.newValue || [];
+    renderAddedTracks();
+  }
+  if (Object.prototype.hasOwnProperty.call(changes, "lastPlaylistUrl")) {
+    state.playlistUrl = changes.lastPlaylistUrl?.newValue || null;
+    renderPlaylistLink(state.playlistUrl);
+  }
+  if (Object.prototype.hasOwnProperty.call(changes, "lastAutoAddNote")) {
+    state.note = changes.lastAutoAddNote?.newValue || null;
+    applyNote(state.note);
+  }
 });
 
+document.addEventListener("DOMContentLoaded", () => {
+  els.refresh.addEventListener("click", refreshState);
+  refreshState();
+});
