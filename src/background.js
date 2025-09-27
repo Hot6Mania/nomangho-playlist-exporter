@@ -32,33 +32,100 @@ async function callServer(endpoint, payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload ?? {}),
   });
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => "");
-    throw new Error(text || `Request failed: ${resp.status}`);
-  }
+
+  const bodyText = await resp.text().catch(() => "");
   const type = resp.headers.get("content-type") || "";
+  let data = bodyText;
+
   if (type.includes("application/json")) {
-    return resp.json();
+    try {
+      data = bodyText ? JSON.parse(bodyText) : {};
+    } catch {
+      data = bodyText;
+    }
   }
-  return resp.text();
+
+  if (!resp.ok) {
+    const errMessage = typeof data === "string" ? data : JSON.stringify(data);
+    const error = new Error(errMessage || ("Request failed: " + resp.status));
+    error.status = resp.status;
+    throw error;
+  }
+
+  return data;
 }
 
-async function searchVideos(query) {
-  return callServer("/search", { query, maxResults: 5 });
+async function addToPlaylist(body) {
+  return callServer("/add", body);
 }
 
-async function addToPlaylist(roomId, roomTitle, videoId) {
-  return callServer("/add", { roomId, roomTitle, videoId });
+function makeTrackKey(title, channel) {
+  const name = (title || "").trim().toLowerCase();
+  const artist = (channel || "").trim().toLowerCase();
+  return `${name}|||${artist}`;
 }
 
 function formatProcessKey(track) {
-  return `${track.title || ""}|||${track.author || ""}`.trim().toLowerCase();
+  return makeTrackKey(track.title, track.author);
 }
 
 function scheduleAutoAdd(track) {
   processingQueue = processingQueue
     .catch(() => {})
     .then(() => processTrack(track));
+}
+
+async function updateAddedState({
+  videoId,
+  title,
+  channel,
+  thumbnail,
+  roomId,
+  roomTitle,
+  playlistUrl,
+  noteType,
+  status = "added",
+  existingState,
+}) {
+  const store = existingState ?? await storageGet(["addedVideoIds", "addedTracks"]);
+  const existingIds = new Set(store.addedVideoIds || []);
+  if (videoId) {
+    existingIds.add(videoId);
+  }
+
+  const updates = {
+    addedVideoIds: Array.from(existingIds),
+    lastAutoAddNote: {
+      ts: Date.now(),
+      type: noteType || "auto-added",
+      videoId: videoId || "",
+      title: title || "",
+      channel: channel || "",
+      status,
+    },
+  };
+
+  if (status !== "skipped") {
+    const existingTracks = Array.isArray(store.addedTracks) ? store.addedTracks : [];
+    const addedEntry = {
+      videoId: videoId || "",
+      title: title || "",
+      channel: channel || "",
+      thumbnail: thumbnail || null,
+      addedAt: Date.now(),
+      roomId: roomId || "",
+      roomTitle: roomTitle || "",
+      status,
+    };
+    updates.addedTracks = [addedEntry, ...existingTracks].slice(0, MAX_TRACK_HISTORY);
+  }
+
+  if (playlistUrl) {
+    updates.lastPlaylistUrl = playlistUrl;
+  }
+
+  await storageSet(updates);
+  return updates.addedTracks ? updates.addedTracks[0] : null;
 }
 
 async function processTrack(track) {
@@ -74,96 +141,57 @@ async function processTrack(track) {
   lastProcessedKey = key;
   lastProcessedTs = now;
 
-  const query = (track.query || "").trim();
-  if (!query) {
+  const trackName = (track.title || "").trim();
+  const artist = (track.author || "").trim();
+
+  if (!trackName && !artist) {
     await storageSet({
       lastAutoAddNote: {
         ts: Date.now(),
-        type: "skip-empty-query",
+        type: "skip-no-metadata",
       },
     });
     return;
   }
 
+  const payload = {
+    roomId: track.roomId || "",
+    roomTitle: track.roomTitle || "",
+    trackName,
+    artist,
+  };
+
+  if (track.videoUrl) {
+    payload.url = track.videoUrl;
+  }
+
   try {
-    const searchResponse = await searchVideos(query);
-    const results = Array.isArray(searchResponse?.results) ? searchResponse.results : [];
-    if (!results.length) {
-      await storageSet({
-        lastAutoAddNote: {
-          ts: Date.now(),
-          type: "no-results",
-          query,
-        },
-      });
-      return;
-    }
-
-    const first = results[0];
-    if (!first?.videoId) {
-      await storageSet({
-        lastAutoAddNote: {
-          ts: Date.now(),
-          type: "invalid-result",
-          query,
-        },
-      });
-      return;
-    }
-
-    const store = await storageGet(["addedVideoIds", "addedTracks"]);
-    const existingIds = new Set(store.addedVideoIds || []);
-    if (existingIds.has(first.videoId)) {
-      await storageSet({
-        lastAutoAddNote: {
-          ts: Date.now(),
-          type: "skipped-duplicate",
-          videoId: first.videoId,
-          title: first.title || track.title || "",
-        },
-      });
-      return;
-    }
-
-    const addResponse = await addToPlaylist(track.roomId || "", track.roomTitle || "", first.videoId);
+    const addResponse = await addToPlaylist(payload);
+    const status = String(addResponse?.status || "added").toLowerCase();
+    const videoId = addResponse?.videoId || "";
     const playlistUrl = addResponse?.playlistUrl || null;
 
-    existingIds.add(first.videoId);
-    const addedEntry = {
-      videoId: first.videoId,
-      title: first.title || track.title || "",
-      channel: first.channel || track.author || "",
-      thumbnail: first.thumbnail || null,
-      addedAt: Date.now(),
+    await updateAddedState({
+      videoId,
+      title: addResponse?.title || trackName,
+      channel: addResponse?.channel || artist,
+      thumbnail: addResponse?.thumbnail || null,
       roomId: track.roomId || "",
       roomTitle: track.roomTitle || "",
-    };
-
-    const existingTracks = Array.isArray(store.addedTracks) ? store.addedTracks : [];
-    const updatedTracks = [addedEntry, ...existingTracks].slice(0, MAX_TRACK_HISTORY);
-
-    const updates = {
-      lastAutoAddNote: {
-        ts: Date.now(),
-        type: "added",
-        videoId: first.videoId,
-        title: addedEntry.title,
-        channel: addedEntry.channel,
-      },
-      addedVideoIds: Array.from(existingIds),
-      addedTracks: updatedTracks,
-    };
-    if (playlistUrl) {
-      updates.lastPlaylistUrl = playlistUrl;
-    }
-    await storageSet(updates);
+      playlistUrl,
+      noteType: status === "queued" ? "auto-queued" : status === "skipped" ? "skipped-duplicate" : "auto-added",
+      status,
+    });
   } catch (error) {
     console.error("[Nomangho][background] auto-add failed", error);
+    const noteType = error?.status === 404 ? "skip-no-match" : error?.status === 400 ? "skip-no-metadata" : "error-add";
     await storageSet({
       lastAutoAddNote: {
         ts: Date.now(),
-        type: "error",
+        type: noteType,
         message: error?.message || String(error),
+        title: track.title || "",
+        channel: track.author || "",
       },
     });
   }
@@ -179,12 +207,15 @@ async function handleTrackMetadata(payload) {
   const roomId = (payload.roomId || "").trim();
   const roomTitle = (payload.roomTitle || "").trim();
   const query = (payload.query || `${author} ${title}`).trim();
+  const videoUrl = (payload.videoUrl || payload.watchUrl || "").trim();
+
   const normalized = {
     title,
     author,
     roomId,
     roomTitle,
     query,
+    videoUrl,
     updatedAt: payload.updatedAt || Date.now(),
   };
 
@@ -202,6 +233,79 @@ async function handleGetStatus() {
     playlistUrl: data.lastPlaylistUrl || null,
     note: data.lastAutoAddNote || null,
   };
+}
+
+async function handleManualAdd(payload) {
+  try {
+    const rawUrl = (payload?.url || payload?.videoId || payload?.input || "").trim();
+    const store = await storageGet(["lastTrack", "addedTracks", "addedVideoIds"]);
+    const lastTrack = store.lastTrack || {};
+
+    const roomId = (payload?.roomId || lastTrack.roomId || "").trim();
+    const roomTitle = (payload?.roomTitle || lastTrack.roomTitle || "").trim();
+    const trackName = (payload?.title || payload?.trackName || lastTrack.title || "").trim();
+    const artist = (payload?.channel || payload?.artist || lastTrack.author || "").trim();
+
+    if (!roomId || (!trackName && !artist)) {
+      await storageSet({
+        lastAutoAddNote: {
+          ts: Date.now(),
+          type: "manual-error",
+          message: "곡 정보를 확인할 수 없습니다.",
+        },
+      });
+      return { ok: false, error: "missing_metadata" };
+    }
+
+    const requestBody = {
+      roomId,
+      roomTitle,
+      trackName,
+      artist,
+    };
+
+    if (rawUrl) {
+      requestBody.url = rawUrl;
+    }
+
+    const addResponse = await addToPlaylist(requestBody);
+    const status = String(addResponse?.status || "added").toLowerCase();
+    const videoId = addResponse?.videoId || "";
+    const playlistUrl = addResponse?.playlistUrl || null;
+
+    await updateAddedState({
+      videoId,
+      title: addResponse?.title || trackName,
+      channel: addResponse?.channel || artist,
+      thumbnail: addResponse?.thumbnail || null,
+      roomId,
+      roomTitle,
+      playlistUrl,
+      noteType: status === "queued" ? "manual-queued" : status === "skipped" ? "manual-skipped" : "manual-added",
+      status,
+      existingState: store,
+    });
+
+    return {
+      ok: true,
+      status,
+      playlistUrl,
+      videoId,
+      title: addResponse?.title || trackName,
+      channel: addResponse?.channel || artist,
+      thumbnail: addResponse?.thumbnail || null,
+    };
+  } catch (error) {
+    console.error("[Nomangho][background] manual add failed", error);
+    await storageSet({
+      lastAutoAddNote: {
+        ts: Date.now(),
+        type: "manual-error",
+        message: error?.message || String(error),
+      },
+    });
+    return { ok: false, error: error?.message || String(error) };
+  }
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -225,6 +329,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .then((result) => sendResponse(result))
       .catch((error) => {
         console.error("[Nomangho][background] GET_STATUS failed", error);
+        sendResponse({ ok: false, error: error?.message || String(error) });
+      });
+    return true;
+  }
+
+  if (type === "ADD_MANUAL_TRACK") {
+    handleManualAdd(message?.payload)
+      .then((result) => sendResponse(result))
+      .catch((error) => {
+        console.error("[Nomangho][background] ADD_MANUAL_TRACK failed", error);
         sendResponse({ ok: false, error: error?.message || String(error) });
       });
     return true;

@@ -3,7 +3,71 @@ const AUTHOR_SELECTOR = ".media-info .author";
 const ROOT_SELECTOR = ".media-info";
 const POLL_INTERVAL_MS = 1000;
 const FORCE_DISPATCH_INTERVAL_MS = 10_000;
+const RETRY_DELAY_MS = 1500;
+const MAX_RETRIES = 3;
+
+let swPort = null;
+
 const ROOM_TITLE_SUFFIX_RE = /\s*-\s*SyncTube\s*$/i;
+const DEFAULT_ROOM_NAME = "\uBC29";
+
+function runtimeAlive() {
+  try {
+    return !!(chrome?.runtime?.id);
+  } catch {
+    return false;
+  }
+}
+
+function ensurePort() {
+  if (!runtimeAlive()) return null;
+  if (swPort) return swPort;
+  try {
+    swPort = chrome.runtime.connect({ name: "nomangho-content" });
+    swPort.onDisconnect.addListener(() => {
+      swPort = null;
+    });
+    return swPort;
+  } catch {
+    swPort = null;
+    return null;
+  }
+}
+
+function sendMessageSafe(message, onResponse, attempt = 0) {
+  if (!runtimeAlive()) {
+    if (attempt < MAX_RETRIES) {
+      setTimeout(() => sendMessageSafe(message, onResponse, attempt + 1), RETRY_DELAY_MS);
+    }
+    return;
+  }
+
+  ensurePort();
+  try {
+    chrome.runtime.sendMessage(message, (resp) => {
+      const err = chrome.runtime.lastError;
+      if (err) {
+        const msg = String(err.message || "");
+        if (/Extension context invalidated|Receiving end does not exist|message port closed before a response was received/i.test(msg)) {
+          if (attempt < MAX_RETRIES) {
+            setTimeout(() => sendMessageSafe(message, onResponse, attempt + 1), RETRY_DELAY_MS);
+            return;
+          }
+        } else if (msg) {
+          console.warn('[Nomangho][content] sendMessage lastError:', msg);
+        }
+      }
+      if (typeof onResponse === 'function') onResponse(resp);
+    });
+  } catch (error) {
+    const msg = String(error?.message || error || '');
+    if (/Extension context invalidated|message port closed before a response was received/i.test(msg) && attempt < MAX_RETRIES) {
+      setTimeout(() => sendMessageSafe(message, onResponse, attempt + 1), RETRY_DELAY_MS);
+      return;
+    }
+    console.warn('[Nomangho][content] sendMessage threw:', msg);
+  }
+}
 
 let lastSentKey = null;
 let lastSentAt = 0;
@@ -20,7 +84,53 @@ function getRoomId() {
 function getRoomTitle() {
   const raw = (document.title || "").trim();
   const cleaned = raw.replace(ROOM_TITLE_SUFFIX_RE, "").trim();
-  return cleaned || "방";
+  return cleaned || DEFAULT_ROOM_NAME;
+}
+
+function extractVideoId(urlOrId) {
+  if (!urlOrId) return "";
+  const str = String(urlOrId).trim();
+  const urlMatch = str.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/|v\/|vi\/))([A-Za-z0-9_-]{11})/i);
+  if (urlMatch && urlMatch[1]) {
+    return urlMatch[1];
+  }
+  const paramMatch = str.match(/[?&]v=([A-Za-z0-9_-]{11})/);
+  if (paramMatch && paramMatch[1]) {
+    return paramMatch[1];
+  }
+  if (/^[A-Za-z0-9_-]{11}$/.test(str)) {
+    return str;
+  }
+  return "";
+}
+
+function toWatchUrl(id) {
+  return id ? `https://www.youtube.com/watch?v=${encodeURIComponent(id)}` : "";
+}
+
+function getVideoContext() {
+  const ctx = { videoId: "", videoUrl: "" };
+  const iframe = document.querySelector(".youtube-player iframe");
+  if (iframe) {
+    const src = iframe.getAttribute("src") || iframe.src || "";
+    if (src) {
+      ctx.videoUrl = src;
+      ctx.videoId = extractVideoId(src);
+    }
+  }
+  if (!ctx.videoId) {
+    const link = document.querySelector(".ytp-title-link");
+    if (link && link.href) {
+      ctx.videoId = extractVideoId(link.href);
+      if (!ctx.videoUrl) {
+        ctx.videoUrl = link.href;
+      }
+    }
+  }
+  if (ctx.videoId && (!ctx.videoUrl || ctx.videoUrl.startsWith("about:"))) {
+    ctx.videoUrl = toWatchUrl(ctx.videoId);
+  }
+  return ctx;
 }
 
 function getCurrentTrack() {
@@ -31,11 +141,14 @@ function getCurrentTrack() {
   if (!title && !artist) {
     return null;
   }
+  const videoCtx = getVideoContext();
   return {
     title,
     artist,
     roomId: getRoomId(),
     roomTitle: getRoomTitle(),
+    videoId: videoCtx.videoId,
+    videoUrl: videoCtx.videoUrl,
   };
 }
 
@@ -51,25 +164,18 @@ function sendTrack(track) {
     roomId: track.roomId,
     roomTitle: track.roomTitle,
     query: [track.artist, track.title].filter(Boolean).join(" ").trim(),
+    videoId: track.videoId || "",
+    videoUrl: track.videoUrl || "",
     updatedAt: Date.now(),
   };
 
-  chrome.runtime.sendMessage(
-    {
-      type: "TRACK_METADATA",
-      payload,
-    },
-    () => {
-      const err = chrome.runtime.lastError;
-      if (err) {
-        console.warn("[Nomangho][content] sendMessage error", err.message);
-      }
-    }
-  );
+  sendMessageSafe({ type: "TRACK_METADATA", payload });
 
   console.log("[Nomangho][content] detected", {
     title: track.title,
     artist: track.artist,
+    videoId: track.videoId,
+    videoUrl: track.videoUrl,
     roomId: track.roomId,
     roomTitle: track.roomTitle,
     timestamp: new Date().toISOString(),
@@ -140,6 +246,7 @@ function startPolling() {
 }
 
 function init() {
+  ensurePort();
   refreshObservers();
   startRootObserver();
   evaluateTrack({ force: true });
@@ -147,6 +254,7 @@ function init() {
 
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
+      ensurePort();
       refreshObservers();
       evaluateTrack({ force: true });
     }

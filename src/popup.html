@@ -3,35 +3,51 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>노망호 플레이리스트 동기화</title>
+  <title>Nomangho Popup</title>
   <link rel="stylesheet" href="./popup.css" />
 </head>
 <body>
   <main class="popup">
-    <h1>노망호 플레이리스트 동기화</h1>
+    <h1 id="appTitle"></h1>
 
     <section class="card" id="trackCard">
-      <h2>최근 감지</h2>
-      <p id="trackLabel" class="muted">곡 정보를 불러오는 중입니다.</p>
+      <h2 id="trackHeading"></h2>
+      <p id="trackLabel" class="muted"></p>
       <p id="trackTitle" class="track-title"></p>
       <p id="trackArtist" class="track-artist"></p>
     </section>
 
     <section class="card" id="addedCard">
-      <h2>추가된 곡</h2>
-      <div id="addedList" class="added-empty">아직 추가된 곡이 없어요.</div>
+      <h2 id="addedHeading"></h2>
+      <div id="addedList" class="added-empty"></div>
     </section>
 
     <section class="card" id="playlistCard">
-      <h2>플레이리스트</h2>
-      <p id="playlistStatus" class="muted">YouTube 플레이리스트 링크가 준비되면 여기에 표시됩니다.</p>
-      <a id="playlistLink" class="link" href="#" target="_blank" rel="noopener" aria-disabled="true">플레이리스트 열기</a>
+      <h2 id="playlistHeading"></h2>
+      <p id="playlistStatus" class="muted"></p>
+      <a id="playlistLink" class="link" href="#" target="_blank" rel="noopener" aria-disabled="true"></a>
+    </section>
+
+    <section class="card collapsed" id="manualCard">
+      <div class="card-header">
+        <h2 id="manualHeading"></h2>
+        <button id="manualToggle" type="button" role="switch" aria-checked="false">
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        </button>
+      </div>
+      <div id="manualBody" class="manual-body" aria-hidden="true">
+        <form id="manualForm" class="manual-form">
+          <input id="manualUrl" type="url" inputmode="url" autocomplete="off" />
+          <button id="manualSubmit" type="submit"></button>
+        </form>
+        <p id="manualHelp" class="manual-help"></p>
+      </div>
     </section>
 
     <div id="message" class="message hidden" role="status"></div>
 
     <div class="actions">
-      <button id="refresh" type="button">새로고침</button>
+      <button id="refresh" type="button"></button>
     </div>
   </main>
   <script src="./popup.js"></script>
