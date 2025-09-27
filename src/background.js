@@ -6,6 +6,17 @@ let lastProcessedKey = "";
 let lastProcessedTs = 0;
 let processingQueue = Promise.resolve();
 
+function getYoutubeThumbnail(videoId) {
+  if (!videoId) {
+    return null;
+  }
+  const trimmed = String(videoId).trim();
+  if (!trimmed) {
+    return null;
+  }
+  return `https://i.ytimg.com/vi/${encodeURIComponent(trimmed)}/hqdefault.jpg`;
+}
+
 function storageSet(data) {
   return new Promise((resolve) => {
     chrome.storage.local.set(data, () => resolve());
@@ -93,6 +104,8 @@ async function updateAddedState({
     existingIds.add(videoId);
   }
 
+  const resolvedThumbnail = thumbnail || getYoutubeThumbnail(videoId);
+
   const updates = {
     addedVideoIds: Array.from(existingIds),
     lastAutoAddNote: {
@@ -111,7 +124,7 @@ async function updateAddedState({
       videoId: videoId || "",
       title: title || "",
       channel: channel || "",
-      thumbnail: thumbnail || null,
+      thumbnail: resolvedThumbnail,
       addedAt: Date.now(),
       roomId: roomId || "",
       roomTitle: roomTitle || "",
@@ -170,12 +183,13 @@ async function processTrack(track) {
     const status = String(addResponse?.status || "added").toLowerCase();
     const videoId = addResponse?.videoId || "";
     const playlistUrl = addResponse?.playlistUrl || null;
+    const resolvedThumbnail = addResponse?.thumbnail || getYoutubeThumbnail(videoId);
 
     await updateAddedState({
       videoId,
       title: addResponse?.title || trackName,
       channel: addResponse?.channel || artist,
-      thumbnail: addResponse?.thumbnail || null,
+      thumbnail: resolvedThumbnail,
       roomId: track.roomId || "",
       roomTitle: track.roomTitle || "",
       playlistUrl,
@@ -251,7 +265,7 @@ async function handleManualAdd(payload) {
         lastAutoAddNote: {
           ts: Date.now(),
           type: "manual-error",
-          message: "°î Á¤º¸¸¦ È®ÀÎÇÒ ¼ö ¾ø½À´Ï´Ù.",
+          message: "ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ È®ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï´ï¿½.",
         },
       });
       return { ok: false, error: "missing_metadata" };
@@ -277,7 +291,7 @@ async function handleManualAdd(payload) {
       videoId,
       title: addResponse?.title || trackName,
       channel: addResponse?.channel || artist,
-      thumbnail: addResponse?.thumbnail || null,
+      thumbnail: resolvedThumbnail,
       roomId,
       roomTitle,
       playlistUrl,
@@ -293,7 +307,7 @@ async function handleManualAdd(payload) {
       videoId,
       title: addResponse?.title || trackName,
       channel: addResponse?.channel || artist,
-      thumbnail: addResponse?.thumbnail || null,
+      thumbnail: resolvedThumbnail,
     };
   } catch (error) {
     console.error("[Nomangho][background] manual add failed", error);

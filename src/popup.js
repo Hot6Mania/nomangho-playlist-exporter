@@ -150,6 +150,13 @@ function formatTime(ts) {
   return `${hh}:${min}`;
 }
 
+function getYoutubeThumbnail(videoId) {
+  if (!videoId) return null;
+  const trimmed = String(videoId).trim();
+  if (!trimmed) return null;
+  return `https://i.ytimg.com/vi/${encodeURIComponent(trimmed)}/hqdefault.jpg`;
+}
+
 function extractVideoId(value) {
   if (!value) return "";
   const str = String(value).trim();
@@ -220,10 +227,11 @@ function renderAddedTracks() {
     const row = document.createElement("div");
     row.className = "added-item";
 
-    if (item.thumbnail) {
-      const img = document.createElement("img");
+    const thumbUrl = item.thumbnail || getYoutubeThumbnail(item.videoId);
+
+    if (thumbUrl) {      const img = document.createElement("img");
       img.className = "added-thumb";
-      img.src = item.thumbnail;
+      img.src = thumbUrl;
       img.alt = "";
       row.appendChild(img);
     } else {
