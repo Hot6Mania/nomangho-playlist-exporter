@@ -1,31 +1,31 @@
-# SyncTube → YouTube Playlist Exporter (Chrome MV3)
+# Nomangho Playlist Exporter (Chrome MV3 확장 프로그램)
 
+노망호 SyncTube 방에서 재생 중인 곡을 자동으로 감지하고, 노망호 서버로 전송해 YouTube 플레이리스트에 추가합니다. 팝업에서는 최근 감지된 곡과 자동 추가 이력을 확인할 수 있습니다.
 
-Collects currently playing tracks from a SyncTube site, stores them, and exports to CSV or a YouTube playlist.
+## 주요 기능
+- **실시간 곡 감지**: `sync-tube.de` 페이지의 현재 재생 정보를 추출해 확장 프로그램에 전달합니다.
+- **자동 플레이리스트 추가**: 백그라운드 서비스 워커가 노망호 API(`https://nomangho.duckdns.org`)와 통신해 가장 적합한 검색 결과를 YouTube 플레이리스트에 넣습니다.
+- **중복 방지 및 상태 표시**: 이미 추가된 영상은 건너뛰고, 최근 추가 결과와 오류 메시지를 팝업에 표시합니다.
+- **로컬 저장소 기록**: 최근 감지된 곡, 추가된 곡 목록, 마지막 플레이리스트 링크를 브라우저 로컬 저장소에 저장합니다.
 
+## 설치 방법 (개발자 모드)
+1. 저장소를 클론하거나 압축을 내려받아 해제합니다.
+2. Chrome에서 `chrome://extensions` 로 이동합니다.
+3. 우측 상단 **개발자 모드**를 활성화합니다.
+4. **압축해제된 확장 프로그램을 로드** 버튼을 눌러 이 프로젝트 폴더를 선택합니다.
 
-## Install (Developer Mode)
-1. Clone this folder.
-2. `chrome://extensions` → Enable **Developer mode** → **Load unpacked** → select the project folder.
+## 사용 방법
+1. `sync-tube.de`에서 노망호 방을 열고 영상을 재생합니다.
+2. 확장 프로그램 아이콘을 클릭하면 최근 감지된 곡, 자동 추가된 곡 목록, 플레이리스트 링크를 확인할 수 있습니다.
+3. 노망호 서버가 곡을 성공적으로 추가하면 팝업에 성공 메시지와 최신 플레이리스트 링크가 표시됩니다.
+4. 곡 정보가 부족하거나 검색 결과가 없으면 해당 안내 문구가 표시됩니다.
 
+## 동작 구조
+- `src/content.js`: SyncTube 페이지의 DOM 변화를 감지하여 곡 제목과 아티스트를 추출하고, 노망호 서버에 전송할 메타데이터를 백그라운드로 전달합니다.
+- `src/background.js`: 곡 정보를 받아 서버 검색/추가 요청을 수행하고, 결과를 로컬 저장소에 저장합니다.
+- `src/popup.html` & `src/popup.js`: 로컬 저장소 상태를 읽어 팝업 UI에 곡 정보와 자동 추가 결과를 렌더링합니다.
 
-## Usage
-- Open your SyncTube page. Start playing videos.
-- Click the extension icon → see captured tracks.
-- **Export CSV**: one click, no OAuth required.
-- **Create/Add to YouTube playlist**: toggle **Enable YouTube API** and authorize when prompted.
-
-
-## Notes
-- Content script uses MutationObserver and a 3s polling fallback.
-- De-dupe uses `videoId|title` to avoid noisy repeats.
-- Playlist creation inserts items sequentially with a small delay to be gentle on quotas.
-
-
-## Security
-- MV3 service worker background, minimal permissions (storage, scripting; host permissions for embed parsing / optional YouTube usage).
-
-
-## Extending
-- Persist candidate items scraped from the sidebar.
-- Support non-YouTube players (SoundCloud) with separate exports.
+## 참고 사항
+- 확장 프로그램은 `storage` 권한과 `https://nomangho.duckdns.org/*` 호스트 권한만 사용합니다.
+- 설치/업데이트 시 마지막 상태 정보는 초기화됩니다.
+- 서버 통신이나 API 오류가 발생하면 팝업 메시지로 확인할 수 있습니다.
